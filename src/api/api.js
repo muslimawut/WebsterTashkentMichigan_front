@@ -2,7 +2,7 @@ import axios from 'axios';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
-const API_BASE_URL = 'https://meptadmin.webster.uz/api/v1';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 const axiosInstance = axios.create({
   baseURL: API_BASE_URL,

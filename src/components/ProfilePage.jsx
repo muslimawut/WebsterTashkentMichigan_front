@@ -26,6 +26,8 @@ import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import ChangePasswordModal from './ChangePasswordModal';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+
 const ProfilePage = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
@@ -185,7 +187,7 @@ const ProfilePage = () => {
         formData.append('image', userData.image);
       }
 
-      const response = await fetch('http://127.0.0.1:8000/api/v1/users/profile', {
+      const response = await fetch(`${API_BASE_URL}/users/profile`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`

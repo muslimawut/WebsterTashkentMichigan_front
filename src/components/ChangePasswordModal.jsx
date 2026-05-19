@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+
 const ChangePasswordModal = ({ isOpen, onClose }) => {
   const [step, setStep] = useState(1); // 1: request code, 2: verify code + new password
   const [isClosing, setIsClosing] = useState(false);
@@ -126,7 +128,7 @@ const ChangePasswordModal = ({ isOpen, onClose }) => {
 
     setLoading(true);
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/v1/users/reset-password', {
+      const response = await fetch(`${API_BASE_URL}/users/reset-password`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -171,7 +173,7 @@ const ChangePasswordModal = ({ isOpen, onClose }) => {
 
     setLoading(true);
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/v1/users/reset-password-confirm', {
+      const response = await fetch(`${API_BASE_URL}/users/reset-password-confirm`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
