@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { safeJsonParse } from '../utils/sanitize';
 
 const Results = () => {
   const navigate = useNavigate();
@@ -33,13 +34,8 @@ const Results = () => {
     } else {
       // Try to get from localStorage as fallback
       const savedResults = localStorage.getItem('mockExamResults');
-      if (savedResults) {
-        try {
-          setResults(JSON.parse(savedResults));
-        } catch (error) {
-          console.error('Error parsing saved results:', error);
-        }
-      }
+      const parsed = safeJsonParse(savedResults);
+      if (parsed) setResults(parsed);
     }
 
     // Clean up localStorage when results are displayed

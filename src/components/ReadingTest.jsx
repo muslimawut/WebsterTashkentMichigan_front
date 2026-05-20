@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CORRECT_ANSWERS, calculateScore } from '../components/CorrectAnswers';
+import { safeJsonParse } from '../utils/sanitize';
 
 const ReadingTest = () => {
   const navigate = useNavigate();
@@ -180,18 +181,10 @@ const ReadingTest = () => {
   };
   
   // Get existing results from localStorage
-  let allResults = JSON.parse(localStorage.getItem('mockExamResults') || '{}');
+  let allResults = safeJsonParse(localStorage.getItem('mockExamResults'), {});
   allResults.reading = readingResults;
   localStorage.setItem('mockExamResults', JSON.stringify(allResults));
   
-  console.log('Reading test completed!', {
-    answers,
-    answeredCount,
-    totalQuestions,
-    score,
-    percentage: ((score / totalQuestions) * 100).toFixed(1) + '%',
-    timeSpent: totalTime
-  });
   
   // Navigate to writing instructions
   navigate('/mock-exam/writing-instructions');

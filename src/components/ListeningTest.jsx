@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { safeJsonParse } from '../utils/sanitize';
 import Englishtestvoice from '../../Everymorning.mp3';
 import Lastweekend from '../../Lastweekend.mp3';
 import Mariastarted from '../../Mariastarted.mp3';
@@ -201,17 +202,10 @@ const ListeningTest10Sec = () => {
   };
   
   // Get existing results or create new object
-  let allResults = JSON.parse(localStorage.getItem('mockExamResults') || '{}');
+  let allResults = safeJsonParse(localStorage.getItem('mockExamResults'), {});
   allResults.listening = listeningResults;
   localStorage.setItem('mockExamResults', JSON.stringify(allResults));
   
-  console.log('Listening test completed!', {
-    answers,
-    answeredCount,
-    totalQuestions,
-    score,
-    percentage: ((score / totalQuestions) * 100).toFixed(1) + '%'
-  });
   
   // Navigate to reading instructions
   navigate('/mock-exam/reading-instructions');

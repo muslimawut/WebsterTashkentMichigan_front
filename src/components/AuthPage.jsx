@@ -267,9 +267,9 @@ const AuthPage = () => {
                   <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-60 h-60 rounded-full bg-white/10 blur-2xl"></div>
 
                   <div className="relative z-10 mb-8">
-                    <h1 className="text-3xl lg:text-4xl font-bold mb-4">Welcome to Webster University</h1>
+                    <h1 className="text-3xl lg:text-4xl font-bold mb-4">Welcome to Webster University Tashkent</h1>
                     <p className="text-blue-100 text-base lg:text-lg opacity-90">
-                      Take the Michigan English Test and unlock your academic journey with us.
+                      Take Webster University Tashkent's internal English placement test and begin your academic journey with confidence.
                     </p>
                   </div>
 
@@ -282,7 +282,7 @@ const AuthPage = () => {
                       </div>
                       <div>
                         <h3 className="font-semibold text-lg mb-1">Accredited Testing</h3>
-                        <p className="text-blue-100 text-sm opacity-80">Official Michigan English Placement Test</p>
+                        <p className="text-blue-100 text-sm opacity-80">Reliable English placement assessment for applicants and students</p>
                       </div>
                     </div>
 
@@ -825,7 +825,7 @@ const AuthPage = () => {
                               Didn't receive the code?{' '}
                               <button
                                 type="button"
-                                onClick={() => alert('Resend functionality will be implemented')}
+                                onClick={() => toast.info('Resend functionality will be implemented')}
                                 className="text-[#024890] hover:text-blue-700 font-medium"
                                 disabled={loading}
                               >

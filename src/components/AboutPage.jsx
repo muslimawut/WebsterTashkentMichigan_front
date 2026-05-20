@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Clock, Target, Globe, CheckCircle, Briefcase, BarChart3, GraduationCap } from 'lucide-react';
+import { FileText, Clock, Target, Globe, CheckCircle, BarChart3, GraduationCap, BookOpen, Headphones, PenTool, Sparkles } from 'lucide-react';
 
 const AboutPage = () => {
   const navigate = useNavigate();
@@ -48,7 +48,7 @@ const AboutPage = () => {
     {
       icon: Target,
       title: "Levels",
-      description: "Scores correspond to CEFR levels A1 (beginner) to C2 (proficient)."
+      description: "Scores correspond to CEFR levels A1 (beginner) to C1 (advanced)."
     },
     {
       icon: Globe,
@@ -59,43 +59,84 @@ const AboutPage = () => {
 
   const testSections = [
     {
-      title: "Grammar Section",
-      description: "Assesses understanding of English grammar rules and structures, including:",
-      items: [
-       "Verb tenses and forms",
-       "Sentence structure",
-       "Parts of speech",
-       "Subject–verb agreement"
+      icon: BookOpen,
+      accent: {
+        glow: 'from-blue-500/20 via-cyan-400/10 to-transparent',
+        badge: 'bg-blue-500/15 text-blue-100 ring-blue-300/20',
+        stat: 'border-blue-400/20 bg-blue-500/10 text-blue-50',
+        title: 'text-blue-100',
+        subtitle: 'text-blue-200',
+        subsection: 'border-blue-400/10 bg-slate-900/60 hover:border-blue-300/30 hover:bg-slate-900/80',
+        skill: 'border-blue-400/20 bg-blue-500/10 text-blue-50'
+      },
+      groupTitle: "Reading & Language Use",
+      groupDescription: "The Reading & Language Use section evaluates grammar, vocabulary, and reading comprehension skills.",
+      meta: { questions: 55, time: "35 minutes" },
+      subsections: [
+        {
+          title: "Grammar",
+          description: "There are 20 grammar questions. Each question presents a short conversation between two speakers with part of the exchange omitted. Test takers select the correct word or phrase from four answer choices to complete the conversation.",
+          skills: ["Verb tenses and forms", "Sentence structure", "Parts of speech", "Subject–verb agreement"]
+        },
+        {
+          title: "Vocabulary",
+          description: "The Vocabulary section contains 20 sentences, each with one missing word. Test takers complete each sentence by selecting the correct answer from four options.",
+          skills: ["Word meanings in context", "Synonyms and antonyms", "Idiomatic expressions", "Collocations"]
+        },
+        {
+          title: "Reading Comprehension",
+          description: "There are 15 reading comprehension questions. The first 5 questions assess sentence-level reading comprehension. The remaining 10 questions are based on two reading passages of different lengths.",
+          skills: ["Main idea identification", "Detail recognition", "Inference skills", "Author's purpose"]
+        }
       ]
     },
     {
-      title: "Vocabulary Section",
-      description: "Evaluates knowledge of English words and their usage, such as:",
-      items: [
-        "Word meanings in context",
-        "Synonyms and antonyms",
-        "Idiomatic expressions",
-        "Collocations"
+      icon: Headphones,
+      accent: {
+        glow: 'from-emerald-500/20 via-teal-400/10 to-transparent',
+        badge: 'bg-emerald-500/15 text-emerald-100 ring-emerald-300/20',
+        stat: 'border-emerald-400/20 bg-emerald-500/10 text-emerald-50',
+        title: 'text-emerald-100',
+        subtitle: 'text-emerald-200',
+        subsection: 'border-emerald-400/10 bg-slate-900/60 hover:border-emerald-300/30 hover:bg-slate-900/80',
+        skill: 'border-emerald-400/20 bg-emerald-500/10 text-emerald-50'
+      },
+      groupTitle: "Listening Section",
+      groupDescription: "The Listening Section consists of two parts with a total of 25 questions. Audio for each question is played once.",
+      meta: { questions: 25, time: "25 minutes" },
+      subsections: [
+        {
+          title: "Part 1",
+          description: "Test takers hear a question or statement that requires a response. They choose the correct answer from three options.",
+          skills: []
+        },
+        {
+          title: "Part 2",
+          description: "Test takers listen to a conversation between two people and answer a question about the conversation by selecting the correct answer from three options.",
+          skills: []
+        }
       ]
     },
     {
-      title: "Reading Comprehension",
-      description: "Tests ability to understand written English passages",
-      items: [
-        "Main idea identification",
-        "Detail recognition",
-        "Inference skills",
-        "Author's purpose"
-      ]
-    },
-    {
-      title: "Writing Section",
-      description: "Measures your ability to express ideas in written English:",
-      items: [
-        "Coherence and paragraph organization",
-        "Grammar and sentence structure",
-        "Vocabulary range and accuracy",
-        "Clarity of argument or opinion"
+      icon: PenTool,
+      accent: {
+        glow: 'from-amber-500/20 via-orange-400/10 to-transparent',
+        badge: 'bg-amber-500/15 text-amber-100 ring-amber-300/20',
+        stat: 'border-amber-400/20 bg-amber-500/10 text-amber-50',
+        title: 'text-amber-100',
+        subtitle: 'text-amber-200',
+        subsection: 'border-amber-400/10 bg-slate-900/60 hover:border-amber-300/30 hover:bg-slate-900/80',
+        skill: 'border-amber-400/20 bg-amber-500/10 text-amber-50'
+      },
+      groupTitle: "Writing Section",
+      groupDescription: "The Writing Section evaluates the ability to analyze, summarize, and express ideas effectively in written English. Test takers are provided with a reading passage and are required to write a well-organized analytical summary based on the text.",
+      meta: { questions: null, time: "60 minutes", wordLimit: "~300 words", task: "Analytical Summary Writing" },
+      subsections: [
+        {
+          title: "Skills assessed",
+          description: "",
+          skills: ["Analytical and critical thinking", "Summary writing", "Coherence and organization", "Grammar and sentence structure", "Vocabulary range and accuracy", "Clarity of expression"]
+        }
       ]
     }
   ];
@@ -115,11 +156,6 @@ const AboutPage = () => {
       icon: BarChart3,
       title: "Accurate Assessment",
       description: "Provides a reliable measure of English proficiency."
-    },
-    {
-      icon: Briefcase,
-      title: "Career Opportunities",
-      description: "Supports academic advancement and professional certification."
     },
   ];
 
@@ -206,31 +242,142 @@ const AboutPage = () => {
         </div>
 
         {/* Test Sections */}
-        <div 
+        <div
           className={`mb-12 transition-all duration-1000 ${
             isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'
           }`}
           style={{ transitionDelay: '0.4s' }}
         >
-          <h2 className="text-3xl font-bold text-white mb-8 text-center">Test Sections</h2>
-          <div className="grid md:grid-cols-4 gap-6">
-            {testSections.map((section, index) => (
-              <div 
-                key={index}
-                className="bg-gray-800 rounded-2xl p-6 border border-gray-700"
-              >
-                <h3 className="text-xl font-bold text-white mb-3">{section.title}</h3>
-                <p className="text-gray-300 mb-4 text-sm">{section.description}</p>
-                <ul className="space-y-2">
-                  {section.items.map((item, idx) => (
-                    <li key={idx} className="flex items-start gap-2 text-gray-300 text-sm">
-                      <span className="text-blue-400 mt-1">•</span>
-                      <span>{item}</span>
-                    </li>
-                  ))}
-                </ul>
+          <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-gradient-to-br from-slate-800 via-slate-900 to-slate-950 px-6 py-8 sm:px-8 sm:py-10 mb-8">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(96,165,250,0.18),_transparent_35%),radial-gradient(circle_at_bottom_left,_rgba(45,212,191,0.12),_transparent_30%)]" />
+            <div className="relative z-10">
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-slate-200 mb-4">
+                <Sparkles className="w-4 h-4 text-cyan-300" />
+                Section breakdown
               </div>
-            ))}
+              <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+                <div className="max-w-3xl">
+                  <h2 className="text-3xl sm:text-4xl font-bold text-white mb-3">Test Sections</h2>
+                  <p className="text-slate-300 leading-relaxed">
+                    Each section focuses on a different academic English skill, so applicants can understand the test flow, timing, and expectations before exam day.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-3 xl:justify-end">
+                  <div className="w-[118px] rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-center">
+                    <p className="text-2xl font-bold text-white">3</p>
+                    <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Sections</p>
+                  </div>
+                  <div className="w-[118px] rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-center">
+                    <p className="text-2xl font-bold text-white">80</p>
+                    <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Questions</p>
+                  </div>
+                  <div className="w-[118px] rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-center">
+                    <p className="text-2xl font-bold text-white">120</p>
+                    <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Minutes</p>
+                  </div>
+                  <div className="w-[118px] rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-center">
+                    <p className="text-2xl font-bold text-white">C1</p>
+                    <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Top Level</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="space-y-6">
+            {testSections.map((group, gi) => {
+              const statCards = [
+                group.meta.questions ? { value: group.meta.questions, label: 'Questions' } : null,
+                { value: group.meta.time, label: 'Duration' },
+                group.meta.wordLimit ? { value: group.meta.wordLimit, label: 'Word Limit' } : null,
+                group.meta.task ? { value: group.meta.task, label: 'Task Type', wide: true } : null
+              ].filter(Boolean);
+
+              return (
+                <div
+                  key={gi}
+                  className="group relative overflow-hidden rounded-[2rem] border border-white/10 bg-slate-900/80 shadow-[0_24px_80px_rgba(2,6,23,0.35)] transition-all duration-500 hover:-translate-y-1 hover:border-white/20"
+                >
+                  <div className="relative px-6 pt-6 pb-5 sm:px-8 sm:pt-8">
+                    <div className={`absolute inset-0 bg-gradient-to-r ${group.accent.glow}`} />
+                    <div className="flex flex-col gap-6 lg:grid lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+                      <div className="min-w-0 lg:pr-4">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className={`flex h-14 w-14 items-center justify-center rounded-2xl ring-1 backdrop-blur-sm ${group.accent.badge}`}>
+                            <group.icon className="h-7 w-7" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
+                              Section {gi + 1}
+                            </p>
+                            <h3 className="text-2xl sm:text-3xl font-bold text-white">{group.groupTitle}</h3>
+                          </div>
+                        </div>
+                        <p className="text-sm sm:text-base leading-relaxed text-slate-300">
+                          {group.groupDescription}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-3 lg:max-w-[560px] lg:justify-end">
+                        {statCards.map((stat, index) => (
+                          <div
+                            key={`${stat.label}-${index}`}
+                            className={`rounded-2xl border px-4 py-3 ${group.accent.stat} ${
+                              stat.wide ? 'w-[180px] sm:w-[210px] lg:w-[220px]' : 'w-[140px] sm:w-[156px]'
+                            }`}
+                          >
+                            <p className={`${stat.wide ? 'text-lg sm:text-xl' : 'text-2xl'} font-bold leading-snug`}>
+                              {stat.value}
+                            </p>
+                            <p className="text-xs uppercase tracking-[0.18em] opacity-80 mt-1">
+                              {stat.label}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className={`grid gap-4 px-6 pb-6 pt-3 sm:px-8 sm:pb-8 sm:pt-4 ${
+                  group.subsections.length === 1 ? 'grid-cols-1' :
+                  group.subsections.length === 2 ? 'md:grid-cols-2' :
+                  'md:grid-cols-2 xl:grid-cols-3'
+                }`}>
+                  {group.subsections.map((sub, si) => (
+                    <div
+                      key={si}
+                      className={`rounded-3xl border p-5 transition-all duration-300 ${group.accent.subsection}`}
+                    >
+                      <div className="flex items-center justify-between gap-3 mb-3">
+                        <h4 className={`text-lg font-semibold ${group.accent.title}`}>{sub.title}</h4>
+                        <span className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ring-1 ${group.accent.badge}`}>
+                          Focus
+                        </span>
+                      </div>
+                      {sub.description && (
+                        <p className="text-slate-300 text-sm mb-4 leading-relaxed">{sub.description}</p>
+                      )}
+                      {sub.skills.length > 0 && (
+                        <div>
+                          <p className={`text-xs font-semibold uppercase tracking-[0.18em] mb-3 ${group.accent.subtitle}`}>
+                            Key skills
+                          </p>
+                          <ul className="flex flex-wrap gap-2">
+                            {sub.skills.map((skill, idx) => (
+                              <li
+                                key={idx}
+                                className={`rounded-full border px-3 py-2 text-sm leading-tight ${group.accent.skill}`}
+                              >
+                                {skill}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -283,9 +430,9 @@ const AboutPage = () => {
               <p className="text-gray-300 text-sm">Intermediate to upper-intermediate proficiency</p>
             </div>
             <div className="bg-gray-900 rounded-xl p-6 border border-gray-700">
-              <h3 className="text-2xl font-bold text-blue-400 mb-2">C1-C2</h3>
-              <p className="text-white font-semibold mb-2">Proficient User</p>
-              <p className="text-gray-300 text-sm">Advanced to near-native proficiency</p>
+              <h3 className="text-2xl font-bold text-blue-400 mb-2">C1</h3>
+              <p className="text-white font-semibold mb-2">Advanced User</p>
+              <p className="text-gray-300 text-sm">Advanced proficiency in English</p>
             </div>
           </div>
         </div>

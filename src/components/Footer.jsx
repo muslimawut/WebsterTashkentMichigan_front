@@ -25,7 +25,7 @@ const Footer = () => {
               className="mb-4 md:mb-0 opacity-90 hover:opacity-100 transition-opacity"
             />
             <p className="text-sm text-gray-400 max-w-xs mx-auto md:mx-0 mt-4 leading-relaxed">
-              Official Michigan English Placement Test Center providing quality language assessment services for students.
+              Official registration platform for Webster University Tashkent internal English placement examinations.
             </p>
           </div>
 

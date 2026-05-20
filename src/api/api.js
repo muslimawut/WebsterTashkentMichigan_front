@@ -30,7 +30,6 @@ const showApiError = (message) => {
   // '\n' bo'yicha ajratib, har bir satrni alohida toast sifatida ko'rsatamiz
   const errors = message.split('\n').filter(msg => msg.trim() !== '');
 
-  console.log(message, 'message');
 
   errors.forEach((error, index) => {
     // Har bir error uchun alohida toast ko'rsatamiz, biroz delay bilan
