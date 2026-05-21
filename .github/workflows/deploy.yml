@@ -2,7 +2,7 @@ name: Deploy Frontend
 
 on:
   push:
-    branches: [dev]
+    branches: [main]
 
 jobs:
   deploy:
@@ -12,7 +12,7 @@ jobs:
       - name: Pull latest code
         run: |
           cd /var/devops/webster-site-frontend
-          git pull origin dev
+          git pull origin main
 
       - name: Rebuild and restart
         run: |
