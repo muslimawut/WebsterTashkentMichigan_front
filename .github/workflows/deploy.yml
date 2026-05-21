@@ -1,0 +1,21 @@
+name: Deploy Frontend
+
+on:
+  push:
+    branches: [dev]
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+
+    steps:
+      - name: Pull latest code
+        run: |
+          cd /var/devops/webster-site-frontend
+          git pull origin dev
+
+      - name: Rebuild and restart
+        run: |
+          cd /var/devops/webster-site-frontend
+          docker compose down
+          docker compose up -d --build
