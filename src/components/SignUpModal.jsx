@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api/api';
+import { toast } from 'react-toastify';
 
 const SignUpModal = ({ isOpen, onClose }) => {
   const [step, setStep] = useState(1); // 1: degree selection, 2: form with verification
@@ -102,7 +103,7 @@ const SignUpModal = ({ isOpen, onClose }) => {
       // If registration is successful (200), show verification code input
       if (response) {
         setRegistrationComplete(true);
-        alert('✅ Registration successful! A verification code has been sent to your email.');
+        toast.success('Registration successful! A verification code has been sent to your email.');
       }
     } catch (err) {
       setError(err.message || 'Registration failed. Please try again.');
@@ -124,7 +125,7 @@ const SignUpModal = ({ isOpen, onClose }) => {
 
     try {
       await api.verifyActivationCode(formData.email, formData.verificationCode);
-      alert('✅ Account activated successfully! You can now sign in.');
+      toast.success('Account activated successfully! You can now sign in.');
       handleClose();
     } catch (err) {
       setError(err.message || 'Invalid verification code');
@@ -444,7 +445,7 @@ const SignUpModal = ({ isOpen, onClose }) => {
                 Didn't receive the code?{' '}
                 <button
                   type="button"
-                  onClick={() => alert('Resend functionality will be implemented')}
+                  onClick={() => toast.info('Resend functionality will be implemented')}
                   className="text-blue-600 hover:text-blue-700 font-medium"
                   disabled={loading}
                 >

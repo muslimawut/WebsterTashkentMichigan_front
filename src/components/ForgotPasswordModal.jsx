@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import ApiService from '../api/api';
+import { toast } from 'react-toastify';
 
 const ForgotPasswordModal = ({ isOpen, onClose }) => {
   const [step, setStep] = useState(1); // 1: email, 2: code + new password
@@ -83,17 +84,17 @@ const ForgotPasswordModal = ({ isOpen, onClose }) => {
   const handleSendResetCode = async (e) => {
     e.preventDefault();
     if (!formData.email) {
-      alert('Please enter your email address');
+      toast.warning('Please enter your email address');
       return;
     }
 
     setLoading(true);
     try {
       await ApiService.sendPasswordResetCode(formData.email);
-      alert(`Password reset code sent to ${formData.email}`);
+      toast.success(`Password reset code sent to ${formData.email}`);
       setStep(2);
     } catch (error) {
-      alert(error.message || 'Failed to send reset code. Please try again.');
+      toast.error(error.message || 'Failed to send reset code. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -104,17 +105,17 @@ const ForgotPasswordModal = ({ isOpen, onClose }) => {
     
     // Validation checks
     if (!formData.activationCode) {
-      alert('Please enter the activation code');
+      toast.warning('Please enter the activation code');
       return;
     }
 
     if (passwordErrors.length > 0) {
-      alert('Please fulfill all password requirements!');
+      toast.warning('Please fulfill all password requirements!');
       return;
     }
-    
+
     if (formData.newPassword !== formData.confirmPassword) {
-      alert('Passwords do not match!');
+      toast.error('Passwords do not match!');
       return;
     }
 
@@ -126,10 +127,10 @@ const ForgotPasswordModal = ({ isOpen, onClose }) => {
         formData.newPassword,
         formData.confirmPassword
       );
-      alert('Password reset successful! You can now sign in with your new password.');
+      toast.success('Password reset successful! You can now sign in with your new password.');
       handleClose();
     } catch (error) {
-      alert(error.message || 'Failed to reset password. Please try again.');
+      toast.error(error.message || 'Failed to reset password. Please try again.');
     } finally {
       setLoading(false);
     }

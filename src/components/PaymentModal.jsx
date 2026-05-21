@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import api from '../api/api';
+import { sanitizeUrl } from '../utils/sanitize';
 import clicklogo from '../../clicklogo.svg';
 import paymelogo from '../../payme.svg';
 import xaznalogo from '../../xazna.png';
@@ -35,8 +36,9 @@ const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
         // Cost fixed at 650000 as requested
         const response = await api.createOrder(paymentMethod, 650000, selectedDate.id);
 
-        if (response.payment_url) {
-          window.location.href = response.payment_url;
+        const safeUrl = sanitizeUrl(response.payment_url);
+        if (safeUrl) {
+          window.location.href = safeUrl;
         } else {
           // If no payment URL (e.g. for cash or other future methods), just close
           handleModalClose();

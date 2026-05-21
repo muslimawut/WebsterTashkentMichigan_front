@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { safeJsonParse } from '../utils/sanitize';
 
 const WritingTest = () => {
   const navigate = useNavigate();
@@ -45,7 +46,6 @@ Write your essay below.`;
           await elem.msRequestFullscreen();
         }
       } catch (err) {
-        console.log('Fullscreen request failed:', err);
       }
     };
     
@@ -387,7 +387,6 @@ Write your essay below.`;
       timestamp: new Date().toISOString()
     };
 
-    console.log('Essay auto-submitted:', submissionData);
 
     // Determine if cheating was detected
     const cheatingReasons = [
@@ -409,7 +408,7 @@ Write your essay below.`;
     };
 
     // Get existing results from localStorage or create new
-    let allResults = JSON.parse(localStorage.getItem('mockExamResults') || '{}');
+    let allResults = safeJsonParse(localStorage.getItem('mockExamResults'), {});
     allResults.writing = writingResults;
     localStorage.setItem('mockExamResults', JSON.stringify(allResults));
 
