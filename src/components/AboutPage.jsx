@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Clock, Target, Globe, CheckCircle, BarChart3, GraduationCap, BookOpen, Headphones, PenTool, Sparkles } from 'lucide-react';
+import { FileText, Clock, Target, Globe, CheckCircle, BarChart3, GraduationCap, BookOpen, Headphones, PenTool, Layers } from 'lucide-react';
 
 const AboutPage = () => {
   const navigate = useNavigate();
@@ -252,7 +252,7 @@ const AboutPage = () => {
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(96,165,250,0.18),_transparent_35%),radial-gradient(circle_at_bottom_left,_rgba(45,212,191,0.12),_transparent_30%)]" />
             <div className="relative z-10">
               <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-slate-200 mb-4">
-                <Sparkles className="w-4 h-4 text-cyan-300" />
+                <Layers className="w-4 h-4 text-cyan-300" />
                 Section breakdown
               </div>
               <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
