@@ -99,7 +99,7 @@ const SignInModal = ({ isOpen, onClose }) => {
           {/* Action buttons */}
           <div className="flex flex-col sm:flex-row gap-3">
             <a
-              href="https://www.webster.edu"
+              href="https://applywu.webster.edu/portal/apply"
               target="_blank"
               rel="noopener noreferrer"
               className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold transition-all shadow-md hover:shadow-lg"

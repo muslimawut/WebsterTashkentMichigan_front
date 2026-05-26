@@ -102,7 +102,7 @@ const SignUpInfoModal = ({ isOpen, onClose }) => {
           {/* Action buttons */}
           <div className="flex flex-col sm:flex-row gap-3">
             <a
-              href="https://apply.webster.uz/"
+              href="https://applywu.webster.edu/portal/apply"
               target="_blank"
               rel="noopener noreferrer"
               onClick={() => {
