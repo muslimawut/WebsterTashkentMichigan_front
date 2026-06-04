@@ -152,11 +152,11 @@ const TestDatesSection = ({ onDateSelect }) => {
 
                   {/* Middle: Info */}
                   <div className="flex-1 flex flex-col justify-center">
-                    <div className="flex items-center gap-2 text-gray-300 text-xs mb-1">
-                      <svg className="w-3.5 h-3.5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <div className={`flex items-center gap-2 text-xs mb-1 ${date.time && date.time.length > 10 ? 'text-yellow-400' : 'text-gray-300'}`}>
+                      <svg className={`w-3.5 h-3.5 ${date.time && date.time.length > 10 ? 'text-yellow-400' : 'text-blue-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
-                      {date.time || '09:00'}
+                      {date.time && date.time.length > 10 ? 'To be announced' : (date.time || '09:00')}
                     </div>
                     {date.location && (
                       <div className="flex items-center gap-2 text-gray-400 text-xs mb-1">
@@ -221,11 +221,11 @@ const TestDatesSection = ({ onDateSelect }) => {
                     <div className="flex flex-col items-center gap-2 flex-1">
                       <p className="text-gray-300 text-sm font-medium">{date.year}</p>
                       {date.time && (
-                        <div className="flex items-center gap-1.5 text-gray-400 text-xs">
-                          <svg className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <div className={`flex items-center gap-1.5 text-xs ${date.time.length > 10 ? 'text-yellow-400' : 'text-gray-400'}`}>
+                          <svg className={`w-3.5 h-3.5 flex-shrink-0 ${date.time.length > 10 ? 'text-yellow-400' : 'text-blue-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
-                          {date.time}
+                          {date.time.length > 10 ? 'To be announced' : date.time}
                         </div>
                       )}
                       {date.location && (
