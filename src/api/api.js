@@ -4,9 +4,15 @@ import 'react-toastify/dist/ReactToastify.css';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
+const getCsrfToken = () => {
+  const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : null;
+};
+
 const axiosInstance = axios.create({
   baseURL: API_BASE_URL,
   timeout: 30000,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -17,6 +23,10 @@ axiosInstance.interceptors.request.use(
     const token = localStorage.getItem('authToken');
     if (token && !config.skipAuth) {
       config.headers['Authorization'] = `Bearer ${token}`;
+    }
+    const csrfToken = getCsrfToken();
+    if (csrfToken && ['post', 'put', 'patch', 'delete'].includes(config.method)) {
+      config.headers['X-CSRFToken'] = csrfToken;
     }
     return config;
   },
@@ -46,18 +56,6 @@ const showApiError = (message) => {
     }, index * 200); // Har bir toast 200ms oralig'ida ko'rsatiladi
   });
 };
-
-// Request interceptor (auth token)
-axiosInstance.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('authToken');
-    if (token && !config.skipAuth) {
-      config.headers['Authorization'] = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
 
 // Response interceptor (error handling)
 axiosInstance.interceptors.response.use(
@@ -219,6 +217,9 @@ class ApiService {
   }
 
   async createOrder(paymentMethod, cost, testDateId) {
+    if (!getCsrfToken()) {
+      await axiosInstance.get('/dates', { skipAuth: true });
+    }
     return axiosInstance.post('/orders/create/', {
       payment_method: paymentMethod.toLowerCase(),
       cost: 1000,
