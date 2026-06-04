@@ -28,6 +28,21 @@ import ChangePasswordModal from './ChangePasswordModal';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
+const formatBookingDateTime = (dateStr, timeStr) => {
+  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const datePart = `${months[month - 1]} ${day}, ${year}`;
+
+  if (!timeStr || timeStr.length > 10) return datePart;
+
+  const [hourStr, minStr] = timeStr.split(':');
+  const hour = parseInt(hourStr);
+  const min = minStr || '00';
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 || 12;
+  return `${datePart} at ${hour12}:${min} ${ampm}`;
+};
+
 const ProfilePage = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
@@ -540,7 +555,7 @@ const ProfilePage = () => {
                     </div>
                     <p className="text-gray-400 flex items-center gap-2">
                       <Calendar className="w-4 h-4" />
-                      {booking.test_date} at {booking.time}
+                      {formatBookingDateTime(booking.test_date, booking.time)}
                     </p>
                   </div>
                 </div>

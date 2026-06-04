@@ -18,6 +18,9 @@ const TestDatesSection = ({ onDateSelect }) => {
         const response = await ApiService.getDates();
 
         // Transform API data to match our component format
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
         const formattedDates = response.map(date => {
           const dateObj = new Date(date.date);
           const monthNames = ["January", "February", "March", "April", "May", "June",
@@ -35,9 +38,10 @@ const TestDatesSection = ({ onDateSelect }) => {
             time: date.time,
             location: date.location,
             originalDate: date.date,
-            address: 'Webster University'
+            address: 'Webster University',
+            dateObj
           };
-        }).slice(0, 4); // Show only first 4 dates
+        }).filter(date => date.dateObj >= today).slice(0, 4);
 
         setTestDates(formattedDates);
         setError(null);
