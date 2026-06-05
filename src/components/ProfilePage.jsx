@@ -480,118 +480,140 @@ const ProfilePage = () => {
         )}
 
         {/* Test History Tab */}
-        {activeTab === 'history' && (
-          <div className="space-y-5">
-            {/* Display Completed Test if scores exist */}
-            {userData.total_score !== null && (
-              <div
-                className={`bg-gray-800 rounded-2xl p-6 md:p-8 shadow-xl border border-gray-700 hover:border-gray-600 transition-all transform hover:scale-[1.01] ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'
-                  }`}
-              >
-                <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-6">
-                  <div className="flex-1">
-                    <div className="flex flex-wrap items-center gap-3 mb-3">
-                      <h4 className="text-xl font-bold text-white">Michigan Placement Test</h4>
-                      <span className="px-4 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 bg-green-500/20 text-green-400 border border-green-500/30">
-                        <CheckCircle className="w-3.5 h-3.5" />
-                        Completed
-                      </span>
-                    </div>
-                    {/* Date is not provided in profile for completed test, so we omit for now or could show a placeholder if required */}
-                  </div>
+        {activeTab === 'history' && (() => {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
 
-                  <div className="text-center md:text-right bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-xl p-4 border border-blue-500/20">
-                    <div className={`text-5xl font-bold ${getScoreColor(userData.total_score)} mb-2`}>
-                      {userData.total_score}
-                    </div>
-                    <div className="text-sm text-gray-400">
-                      Level: <span className="font-bold text-white text-lg">{userData.cefr_level || 'N/A'}</span>
-                    </div>
-                  </div>
-                </div>
+          const visibleBookings = (userData.bookings || []).filter(b => {
+            const hasResult = b.total_score !== null || b.listening_score !== null;
+            const isFuture = new Date(b.test_date) >= today;
+            return hasResult || isFuture;
+          });
 
-                <div className="border-t border-gray-700 pt-6 mt-6">
-                  <h5 className="text-base font-bold text-gray-200 mb-4 flex items-center gap-2">
-                    <BarChart3 className="w-5 h-5 text-blue-400" />
-                    Section Scores
-                  </h5>
-                  <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-5">
-                    {[
-                      { label: 'Listening', score: userData.listening_score },
-                      { label: 'GVR', score: userData.gvr_score },
-                      { label: 'Writing', score: userData.writing_score }
-                    ].map((section) => (
-                      section.score !== null && (
-                        <div key={section.label} className="relative bg-gray-700/30 rounded-xl p-4 border border-gray-600/50">
-                          <div className="flex items-center justify-between mb-3">
-                            <span className="text-sm font-semibold text-gray-300 capitalize">{section.label}</span>
-                            <span className="text-lg font-bold text-white">{section.score}</span>
-                          </div>
-                          {/* Progress bar removed as max score is variable/unknown */}
+          return (
+            <div className="space-y-5">
+              {visibleBookings.map((booking, index) => {
+                const hasResult = booking.total_score !== null || booking.listening_score !== null;
+
+                /* ── Completed card ── */
+                if (hasResult) return (
+                  <div
+                    key={booking.id}
+                    className={`bg-gray-800 rounded-2xl p-6 md:p-8 shadow-xl border border-gray-700 hover:border-gray-600 transition-all transform hover:scale-[1.01] ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}
+                    style={{ transitionDelay: `${index * 100}ms` }}
+                  >
+                    <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-6">
+                      <div className="flex-1">
+                        <div className="flex flex-wrap items-center gap-3 mb-3">
+                          <h4 className="text-xl font-bold text-white">Michigan Placement Test</h4>
+                          <span className="px-4 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 bg-green-500/20 text-green-400 border border-green-500/30">
+                            <CheckCircle className="w-3.5 h-3.5" />
+                            Completed
+                          </span>
+                          {booking.decision && (
+                            <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${booking.decision === 'Pass' ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30'}`}>
+                              {booking.decision}
+                            </span>
+                          )}
                         </div>
-                      )
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
+                        <p className="text-gray-400 flex items-center gap-2 text-sm">
+                          <Calendar className="w-4 h-4" />
+                          {formatBookingDateTime(booking.test_date, booking.time)}
+                          {booking.location && <span className="text-gray-500">· {booking.location}</span>}
+                        </p>
+                      </div>
 
-            {/* Display Upcoming Bookings */}
-            {userData.bookings && userData.bookings.map((booking, index) => (
-              <div
-                key={index}
-                className={`bg-gray-800 rounded-2xl p-6 md:p-8 shadow-xl border border-gray-700 hover:border-gray-600 transition-all transform hover:scale-[1.01] ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'
-                  }`}
-                style={{ transitionDelay: `${index * 100}ms` }}
-              >
-                <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-6">
-                  <div className="flex-1">
-                    <div className="flex flex-wrap items-center gap-3 mb-3">
-                      <h4 className="text-xl font-bold text-white">Michigan Placement Test</h4>
-                      <span className="px-4 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">
-                        <Calendar className="w-3.5 h-3.5" />
-                        Upcoming
-                      </span>
+                      <div className="text-center md:text-right bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-xl p-4 border border-blue-500/20 min-w-[120px]">
+                        <div className={`text-5xl font-bold ${getScoreColor(booking.total_score)} mb-1`}>
+                          {booking.total_score ?? '—'}
+                        </div>
+                        <div className="text-sm text-gray-400">
+                          Level: <span className="font-bold text-white text-lg">{booking.cefr_level || 'N/A'}</span>
+                        </div>
+                      </div>
                     </div>
-                    <p className="text-gray-400 flex items-center gap-2">
-                      <Calendar className="w-4 h-4" />
-                      {formatBookingDateTime(booking.test_date, booking.time)}
-                    </p>
-                  </div>
-                </div>
 
-                <div className="border-t border-gray-700 pt-6 mt-6">
-                  <div className="flex items-start gap-3 text-yellow-400 bg-yellow-500/10 p-4 rounded-xl border border-yellow-500/30">
-                    <AlertCircle className="w-6 h-6 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <p className="font-semibold mb-1">Test Reminder</p>
-                      <p className="text-sm text-yellow-300/80">Please arrive 15 minutes early. Bring your passport and registration confirmation.</p>
+                    <div className="border-t border-gray-700 pt-6 mt-2">
+                      <h5 className="text-base font-bold text-gray-200 mb-4 flex items-center gap-2">
+                        <BarChart3 className="w-5 h-5 text-blue-400" />
+                        Section Scores
+                      </h5>
+                      <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4">
+                        {[
+                          { label: 'Listening', score: booking.listening_score },
+                          { label: 'GVR',       score: booking.gvr_score },
+                          { label: 'Writing',   score: booking.writing_score },
+                        ].map(section => (
+                          <div key={section.label} className="bg-gray-700/30 rounded-xl p-4 border border-gray-600/50">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-semibold text-gray-300">{section.label}</span>
+                              <span className="text-lg font-bold text-white">{section.score ?? '—'}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
-            ))}
+                );
 
-            {/* Empty State if no history or bookings */}
-            {!userData.total_score && (!userData.bookings || userData.bookings.length === 0) && (
-              <div className="text-center py-12 bg-gray-800/50 rounded-2xl border border-gray-700 border-dashed">
-                <div className="w-16 h-16 bg-gray-700/50 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Calendar className="w-8 h-8 text-gray-500" />
+                /* ── Upcoming card ── */
+                return (
+                  <div
+                    key={booking.id}
+                    className={`bg-gray-800 rounded-2xl p-6 md:p-8 shadow-xl border border-gray-700 hover:border-gray-600 transition-all transform hover:scale-[1.01] ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}
+                    style={{ transitionDelay: `${index * 100}ms` }}
+                  >
+                    <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-6">
+                      <div className="flex-1">
+                        <div className="flex flex-wrap items-center gap-3 mb-3">
+                          <h4 className="text-xl font-bold text-white">Michigan Placement Test</h4>
+                          <span className="px-4 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">
+                            <Calendar className="w-3.5 h-3.5" />
+                            Upcoming
+                          </span>
+                        </div>
+                        <p className="text-gray-400 flex items-center gap-2 text-sm">
+                          <Calendar className="w-4 h-4" />
+                          {formatBookingDateTime(booking.test_date, booking.time)}
+                          {booking.location && <span className="text-gray-500">· {booking.location}</span>}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-gray-700 pt-6 mt-2">
+                      <div className="flex items-start gap-3 text-yellow-400 bg-yellow-500/10 p-4 rounded-xl border border-yellow-500/30">
+                        <AlertCircle className="w-6 h-6 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-semibold mb-1">Test Reminder</p>
+                          <p className="text-sm text-yellow-300/80">Please arrive 15 minutes early. Bring your passport and registration confirmation.</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Empty state */}
+              {visibleBookings.length === 0 && (
+                <div className="text-center py-12 bg-gray-800/50 rounded-2xl border border-gray-700 border-dashed">
+                  <div className="w-16 h-16 bg-gray-700/50 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Calendar className="w-8 h-8 text-gray-500" />
+                  </div>
+                  <h3 className="text-xl font-bold text-white mb-2">No Test History</h3>
+                  <p className="text-gray-400 max-w-md mx-auto">
+                    You haven't taken any tests yet and have no upcoming bookings.
+                  </p>
+                  <button
+                    onClick={() => navigate('/test-dates')}
+                    className="mt-6 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold transition-colors"
+                  >
+                    Book a Test
+                  </button>
                 </div>
-                <h3 className="text-xl font-bold text-white mb-2">No Test History</h3>
-                <p className="text-gray-400 max-w-md mx-auto">
-                  You haven't taken any tests yet and have no upcoming bookings.
-                </p>
-                <button
-                  onClick={() => navigate('/test-dates')}
-                  className="mt-6 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold transition-colors"
-                >
-                  Book a Test
-                </button>
-              </div>
-            )}
-          </div>
-        )}
+              )}
+            </div>
+          );
+        })()}
 
         {/* Settings Tab */}
         {activeTab === 'settings' && (
