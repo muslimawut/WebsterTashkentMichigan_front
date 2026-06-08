@@ -17,12 +17,15 @@ const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
     if (isOpen) {
       setIsClosing(false);
       document.body.style.overflow = 'hidden';
+      document.dispatchEvent(new CustomEvent('payment-modal-open'));
     } else {
       document.body.style.overflow = 'unset';
+      document.dispatchEvent(new CustomEvent('payment-modal-close'));
     }
 
     return () => {
       document.body.style.overflow = 'unset';
+      document.dispatchEvent(new CustomEvent('payment-modal-close'));
     };
   }, [isOpen]);
 
@@ -94,15 +97,26 @@ const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
 
   return (
     <div
-      className={`fixed inset-0 flex items-center justify-center p-4 z-[100] bg-black/70 backdrop-blur-sm ${isClosing ? 'animate-fadeOut' : 'animate-fadeIn'
-        }`}
+      className={`fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm
+        flex items-end sm:items-center sm:justify-center sm:p-4
+        ${isClosing ? 'animate-fadeOut' : 'animate-fadeIn'}`}
       onClick={handleModalClose}
     >
+      {/* Modal */}
       <div
-        className={`bg-gray-900 rounded-3xl max-w-lg w-full relative shadow-2xl max-h-[90vh] overflow-y-auto ${isClosing ? 'animate-slideDown' : 'animate-slideUp'
-          }`}
+        className={`
+          bg-gray-900 w-full relative shadow-2xl overflow-y-auto
+          rounded-t-3xl sm:rounded-3xl
+          max-h-[92vh] sm:max-h-[90vh] sm:max-w-lg
+          ${isClosing ? 'sheet-exit sm:animate-slideDown' : 'sheet-enter sm:animate-slideUp'}
+        `}
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Drag handle — mobile only */}
+        <div className="flex justify-center pt-3 pb-1 sm:hidden">
+          <div className="w-10 h-1 rounded-full bg-gray-600" />
+        </div>
+
         {/* Close button */}
         <button
           onClick={handleModalClose}
@@ -114,7 +128,7 @@ const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
         </button>
 
         {/* Content */}
-        <div className="p-6 sm:p-8">
+        <div className="p-6 sm:p-8 pb-8 sm:pb-8" style={{ paddingBottom: 'max(2rem, env(safe-area-inset-bottom, 2rem))' }}>
           {/* Title */}
           <h2 className="text-xl sm:text-2xl font-bold text-white mb-2 pr-8">Complete Payment</h2>
           <p className="text-gray-400 text-sm mb-6 sm:mb-8">Secure payment for your test registration</p>

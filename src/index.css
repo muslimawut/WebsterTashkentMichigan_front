@@ -115,6 +115,24 @@ code {
   animation: slideDown 0.3s cubic-bezier(0.7, 0, 0.84, 0) forwards;
 }
 
+@keyframes sheetUp {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+
+@keyframes sheetDown {
+  from { transform: translateY(0); }
+  to   { transform: translateY(100%); }
+}
+
+.sheet-enter {
+  animation: sheetUp 0.38s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.sheet-exit {
+  animation: sheetDown 0.28s cubic-bezier(0.7, 0, 0.84, 0) forwards;
+}
+
 /* Notification Animation - Slide from Right */
 @keyframes slideInFromRight {
   from {

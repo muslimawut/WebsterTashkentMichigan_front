@@ -6,6 +6,7 @@ import ApiService from '../api/api';
 
 const Chatbot = () => {
     const [isOpen, setIsOpen] = useState(false);
+    const [isPaymentOpen, setIsPaymentOpen] = useState(false);
     const [datesContext, setDatesContext] = useState('');
     const [messages, setMessages] = useState([
         {
@@ -28,6 +29,18 @@ const Chatbot = () => {
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     };
+
+    // Hide when payment modal is open
+    useEffect(() => {
+        const handleOpen  = () => { setIsPaymentOpen(true);  setIsOpen(false); };
+        const handleClose = () => setIsPaymentOpen(false);
+        document.addEventListener('payment-modal-open',  handleOpen);
+        document.addEventListener('payment-modal-close', handleClose);
+        return () => {
+            document.removeEventListener('payment-modal-open',  handleOpen);
+            document.removeEventListener('payment-modal-close', handleClose);
+        };
+    }, []);
 
     // Fetch dates for context
     useEffect(() => {
@@ -123,6 +136,8 @@ const Chatbot = () => {
             setIsTyping(false);
         }
     };
+
+    if (isPaymentOpen) return null;
 
     return (
         <div className="fixed bottom-28 right-4 lg:bottom-6 lg:right-6 z-50 flex flex-col items-end pointer-events-none">

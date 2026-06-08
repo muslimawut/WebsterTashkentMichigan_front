@@ -49,15 +49,6 @@ const HeroSection = () => {
             animation: 'fadeInUp 0.8s ease-out 0.6s forwards'
           }}
         >
-          <a
-            href="https://webster.uz"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex-1 sm:flex-none px-4 py-3 sm:px-8 sm:py-4 rounded-lg text-sm sm:text-lg font-semibold transition-all duration-300 hover:scale-105 transform shadow-lg hover:shadow-2xl flex items-center justify-center text-center whitespace-nowrap"
-            style={{ backgroundColor: '#024890', color: '#fff' }}
-          >
-            START ENROLLMENT
-          </a>
           <button
             onClick={() => navigate('/about')}
             className="flex-1 sm:flex-none px-4 py-3 sm:px-8 sm:py-4 bg-transparent border-2 border-white text-white rounded-lg text-sm sm:text-lg font-semibold hover:bg-white hover:text-gray-900 transition-all duration-300 hover:scale-105 transform shadow-lg text-center whitespace-nowrap"
