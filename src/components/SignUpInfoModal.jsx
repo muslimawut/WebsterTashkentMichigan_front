@@ -25,7 +25,7 @@ const SignUpInfoModal = ({ isOpen, onClose }) => {
     setTimeout(() => {
       onClose();
       setIsClosing(false);
-      navigate('/auth');
+      navigate('/auth?tab=signup');
     }, 300);
   };
 

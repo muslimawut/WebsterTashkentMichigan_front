@@ -61,7 +61,7 @@ const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
           // Close modal without delay to prevent state updates on unmount
           setIsClosing(true);
           onClose();
-          navigate('/auth');
+          navigate('/auth?tab=signup');
           return;
         }
         setIsProcessing(false); // Only stop processing if not redirecting

@@ -5,11 +5,14 @@ import ForgotPasswordModal from './ForgotPasswordModal';
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
 const AuthPage = () => {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('signin'); // 'signin' or 'signup'
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState(
+    searchParams.get('tab') === 'signup' ? 'signup' : 'signin'
+  );
   const [signUpStep, setSignUpStep] = useState(1);
   const [selectedDegree, setSelectedDegree] = useState('');
   const [showForgotPassword, setShowForgotPassword] = useState(false);
