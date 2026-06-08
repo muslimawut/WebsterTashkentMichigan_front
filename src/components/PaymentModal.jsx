@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import ReactDOM from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import api from '../api/api';
@@ -95,7 +96,7 @@ const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
     }
   ];
 
-  return (
+  return ReactDOM.createPortal(
     <div
       className={`fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm
         flex items-end sm:items-center sm:justify-center sm:p-4
@@ -107,9 +108,10 @@ const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
         className={`
           bg-gray-900 w-full relative shadow-2xl overflow-y-auto
           rounded-t-3xl sm:rounded-3xl
-          max-h-[92vh] sm:max-h-[90vh] sm:max-w-lg
+          max-h-[88vh] sm:max-h-[90vh] sm:max-w-lg
           ${isClosing ? 'sheet-exit sm:animate-slideDown' : 'sheet-enter sm:animate-slideUp'}
         `}
+        style={{ minHeight: '70vh' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Drag handle — mobile only */}
@@ -128,7 +130,7 @@ const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
         </button>
 
         {/* Content */}
-        <div className="p-6 sm:p-8 pb-8 sm:pb-8" style={{ paddingBottom: 'max(2rem, env(safe-area-inset-bottom, 2rem))' }}>
+        <div className="p-6 sm:p-8" style={{ paddingBottom: 'max(3rem, calc(env(safe-area-inset-bottom) + 2rem))' }}>
           {/* Title */}
           <h2 className="text-xl sm:text-2xl font-bold text-white mb-2 pr-8">Complete Payment</h2>
           <p className="text-gray-400 text-sm mb-6 sm:mb-8">Secure payment for your test registration</p>
@@ -243,7 +245,8 @@ const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
