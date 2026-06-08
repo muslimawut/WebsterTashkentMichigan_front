@@ -1,37 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FileText, Clock, Target, Globe, CheckCircle, BarChart3, GraduationCap, BookOpen, Headphones, PenTool, Layers } from 'lucide-react';
 
 const AboutPage = () => {
   const navigate = useNavigate();
   const [isVisible, setIsVisible] = useState(false);
-  const sectionRef = useRef(null);
 
   useEffect(() => {
-    // Sahifa ochilganda yuqoriga scroll qilish
     window.scrollTo(0, 0);
-    
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setIsVisible(true);
-        }
-      },
-      {
-        threshold: 0.1,
-        rootMargin: '0px'
-      }
-    );
-
-    if (sectionRef.current) {
-      observer.observe(sectionRef.current);
-    }
-
-    return () => {
-      if (sectionRef.current) {
-        observer.unobserve(sectionRef.current);
-      }
-    };
+    setTimeout(() => setIsVisible(true), 80);
   }, []);
 
   const metFeatures = [
@@ -181,7 +158,7 @@ const AboutPage = () => {
       </div>
 
       {/* Main Content */}
-      <div ref={sectionRef} className="max-w-7xl mx-auto px-4 sm:px-6 py-12">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12">
         {/* Hero Section */}
         <div 
           className={`text-center mb-16 transition-all duration-1000 ${

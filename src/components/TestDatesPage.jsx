@@ -187,12 +187,12 @@ const TestDatesPage = () => {
                         {date.time && date.time.length > 10 ? 'To be announced' : (date.time || '09:00')}
                       </div>
                       {date.location && (
-                        <div className="flex items-center gap-2 text-gray-400 text-xs mb-1">
-                          <svg className="w-3.5 h-3.5 text-[#f5b706]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <div className="flex items-center gap-1.5 bg-[#f5b706]/10 border border-[#f5b706]/30 rounded-md px-2 py-1 w-fit mb-1">
+                          <svg className="w-3.5 h-3.5 text-[#f5b706] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                           </svg>
-                          {date.location}
+                          <span className="text-[#f5b706] text-xs font-semibold capitalize">{date.location}</span>
                         </div>
                       )}
                       {date.isFull ? (
@@ -203,7 +203,7 @@ const TestDatesPage = () => {
                       ) : (
                         <span className="flex items-center gap-1 text-green-400 text-[10px] font-medium bg-green-500/10 px-2 py-0.5 rounded-md border border-green-500/20 w-fit">
                           <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
-                          {date.available} Left
+                          {date.available} Places Left
                         </span>
                       )}
                     </div>
@@ -263,16 +263,16 @@ const TestDatesPage = () => {
                         ) : (
                           <span className="inline-flex items-center gap-1.5 text-green-400 text-sm font-semibold bg-green-500/10 px-4 py-2 rounded-xl border border-green-500/20">
                             <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                            {date.available} Left
+                            {date.available} Places Left
                           </span>
                         )}
                         {date.location && (
-                          <div className="flex items-center gap-1.5 text-gray-400 text-xs mt-1">
-                            <svg className="w-3.5 h-3.5 text-[#f5b706] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <div className="flex items-center gap-1.5 bg-[#f5b706]/10 border border-[#f5b706]/30 rounded-lg px-3 py-1.5 mt-1">
+                            <svg className="w-4 h-4 text-[#f5b706] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                             </svg>
-                            {date.location}
+                            <span className="text-[#f5b706] text-sm font-semibold capitalize">{date.location}</span>
                           </div>
                         )}
                       </div>

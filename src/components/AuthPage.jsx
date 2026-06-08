@@ -13,6 +13,7 @@ const AuthPage = () => {
   const [activeTab, setActiveTab] = useState(
     searchParams.get('tab') === 'signup' ? 'signup' : 'signin'
   );
+  const redirectPath = searchParams.get('redirect') || '/';
   const [signUpStep, setSignUpStep] = useState(1);
   const [selectedDegree, setSelectedDegree] = useState('');
   const [showForgotPassword, setShowForgotPassword] = useState(false);
@@ -219,12 +220,11 @@ const AuthPage = () => {
         localStorage.removeItem('currentPage'); // Clear current page
       }
 
-      showNotification('Account activated successfully! Redirecting to home...', 'success');
+      showNotification('Account activated successfully! Redirecting...', 'success');
 
-      // Redirect to home page
       setTimeout(() => {
-        navigate('/'); // Navigate to home
-        window.location.reload(); // Reload to update navbar state
+        navigate(redirectPath);
+        window.location.reload();
       }, 1500);
     } catch (error) {
       console.error('Verification error:', error);

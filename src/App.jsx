@@ -9,7 +9,6 @@ import CTASection from './components/CTASection';
 import Footer from './components/Footer';
 import PaymentModal from './components/PaymentModal';
 import Loading from './components/Loading';
-import SignUpInfoModal from './components/SignUpInfoModal';
 import AuthPage from './components/AuthPage';
 import PreparationMaterials from './components/PreparationMaterials';
 import ProfilePage from './components/ProfilePage';
@@ -62,7 +61,6 @@ const HomePage = ({ onSignUpClick, isLoggedIn }) => {
 
 export default function App() {
   const [loading, setLoading] = useState(true);
-  const [showSignUpModal, setShowSignUpModal] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
@@ -100,7 +98,7 @@ export default function App() {
             path="/"
             element={
               <HomePage
-                onSignUpClick={() => setShowSignUpModal(true)}
+                onSignUpClick={() => window.location.href = '/auth?tab=signup'}
                 isLoggedIn={isLoggedIn}
               />
             }
@@ -175,10 +173,6 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
 
-        <SignUpInfoModal
-          isOpen={showSignUpModal}
-          onClose={() => setShowSignUpModal(false)}
-        />
         <Chatbot />
         <ToastContainer />
       </div>
