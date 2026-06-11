@@ -21,6 +21,7 @@ import ReadingInstructions from './components/ReadingInstructions';
 import ReadingTest from './components/ReadingTest';
 import WritingInstructions from './components/WritingInstructions';
 import WritingTest from './components/WritingTest';
+import WritingExam from './components/WritingExam';
 import Results from './components/ResultsPage';
 import Chatbot from './components/Chatbot';
 
@@ -161,6 +162,12 @@ export default function App() {
           <Route
             path="/mock-exam/writing"
             element={<WritingTest />}
+          />
+
+          {/* New Writing Exam Route */}
+          <Route
+            path="/writing-exam"
+            element={<WritingExam />}
           />
 
           {/* Results Route */}
