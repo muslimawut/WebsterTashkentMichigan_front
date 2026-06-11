@@ -206,7 +206,7 @@ const WritingTest = () => {
     let cooldownTimer = null;
     
     const handleVisibilityChange = () => {
-      if (document.hidden && !isSubmitted && !hasSubmittedRef.current && !isWarningActive) {
+      if (document.hidden && testStarted && !isSubmitted && !hasSubmittedRef.current && !isWarningActive) {
         isWarningActive = true; // Prevent multiple triggers
         
         mouseLeaveCountRef.current += 1;
@@ -235,7 +235,7 @@ const WritingTest = () => {
     };
 
     const handleWindowBlur = () => {
-      if (!isSubmitted && !hasSubmittedRef.current && !isWarningActive) {
+      if (testStarted && !isSubmitted && !hasSubmittedRef.current && !isWarningActive) {
         isWarningActive = true; // Prevent multiple triggers
         
         mouseLeaveCountRef.current += 1;
@@ -265,8 +265,8 @@ const WritingTest = () => {
 
     // Detect fullscreen exit
     const handleFullscreenChange = () => {
-      if (!document.fullscreenElement && !document.webkitFullscreenElement && 
-          !document.msFullscreenElement && !isSubmitted && !hasSubmittedRef.current && !isWarningActive) {
+      if (!document.fullscreenElement && !document.webkitFullscreenElement &&
+          !document.msFullscreenElement && testStarted && !isSubmitted && !hasSubmittedRef.current && !isWarningActive) {
         isWarningActive = true; // Prevent multiple triggers
         
         mouseLeaveCountRef.current += 1;
@@ -326,7 +326,7 @@ const WritingTest = () => {
     let cooldownTimer = null;
     
     const handleMouseMove = (e) => {
-      if (isSubmitted || hasSubmittedRef.current || isWarningActive) return;
+      if (!testStarted || isSubmitted || hasSubmittedRef.current || isWarningActive) return;
       
       // In fullscreen mode, detect mouse at top or bottom edges (with count and auto-submit)
       const isFullscreen = document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement;
@@ -366,7 +366,7 @@ const WritingTest = () => {
     };
     
     const handleMouseLeave = (e) => {
-      if (isSubmitted || hasSubmittedRef.current || isWarningActive) return;
+      if (!testStarted || isSubmitted || hasSubmittedRef.current || isWarningActive) return;
       
       // Only trigger if mouse actually leaves the window boundaries
       if (e.clientY < 0 || e.clientX < 0 || 
