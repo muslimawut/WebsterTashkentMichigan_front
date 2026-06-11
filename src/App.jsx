@@ -167,7 +167,7 @@ export default function App() {
           {/* New Writing Exam Route */}
           <Route
             path="/writing-exam"
-            element={<WritingExam />}
+            element={<WritingInstructions />}
           />
 
           {/* Results Route */}

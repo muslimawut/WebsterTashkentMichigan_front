@@ -19,6 +19,7 @@ Write your essay below.`;
   const [charCount, setCharCount] = useState(0);
   const [showSubmitWarning, setShowSubmitWarning] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [testStarted, setTestStarted] = useState(false);
   const [showMouseWarning, setShowMouseWarning] = useState(false);
   const [mouseLeaveCount, setMouseLeaveCount] = useState(0);
@@ -438,7 +439,19 @@ Write your essay below.`;
 
   const handleConfirmSubmit = () => {
     setShowSubmitWarning(false);
-    handleAutoSubmit('Manual submission');
+    if (hasSubmittedRef.current) return;
+    hasSubmittedRef.current = true;
+    if (totalTimerRef.current) clearInterval(totalTimerRef.current);
+    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+    setShowSuccessModal(true);
+    setTimeout(() => {
+      const exit = document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen || document.msExitFullscreen;
+      if (exit && (document.fullscreenElement || document.webkitFullscreenElement)) {
+        exit.call(document).catch(() => {}).finally(() => navigate('/'));
+      } else {
+        navigate('/');
+      }
+    }, 3000);
   };
 
   // Format time
@@ -645,6 +658,29 @@ Remember to:
           </div>
         </div>
       </div>
+
+      {/* Success Modal */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-10 text-center">
+            <div className="mx-auto w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-6">
+              <svg className="w-10 h-10 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <h3 className="text-2xl font-bold text-gray-900 mb-3">Essay Successfully Submitted!</h3>
+            <p className="text-gray-600 mb-2">Your essay has been received and will be reviewed.</p>
+            <div className="bg-gray-50 rounded-xl px-5 py-3 mb-6 inline-block">
+              <span className="text-sm text-gray-500">Words written: </span>
+              <span className="text-sm font-bold text-gray-800">{wordCount}</span>
+            </div>
+            <p className="text-sm text-gray-400">Redirecting to home page...</p>
+            <div className="mt-4 w-full bg-gray-200 rounded-full h-1 overflow-hidden">
+              <div className="h-1 rounded-full animate-[shrink_3s_linear_forwards]" style={{ backgroundColor: '#024890', width: '100%' }} />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Submit Modal */}
       {showSubmitWarning && (
