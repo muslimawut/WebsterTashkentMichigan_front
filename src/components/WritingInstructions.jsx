@@ -13,11 +13,11 @@ const WritingInstructions = () => {
   };
 
   const handleGoBack = () => {
-    setShowWarning(true);
+    navigate('/');
   };
 
   const handleConfirmGoBack = () => {
-    navigate('/mock-exam');
+    navigate('/');
   };
 
   return (
@@ -195,21 +195,6 @@ const WritingInstructions = () => {
                   </svg>
                   Start Writing Test
                 </span>
-              </button>
-              <button
-                onClick={handleGoBack}
-                className="flex-1 py-4 px-8 rounded-xl font-bold text-lg transition-all duration-300 transform border-2 text-gray-700 hover:scale-105"
-                style={{ borderColor: '#024890', color: '#024890' }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = '#024890';
-                  e.currentTarget.style.color = '#fff';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                  e.currentTarget.style.color = '#024890';
-                }}
-              >
-                Go Back
               </button>
             </div>
 

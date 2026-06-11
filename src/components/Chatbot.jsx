@@ -1,10 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { getResponse } from '../utils/chatKnowledgeBase';
 import { sendMessageToGemini } from '../utils/gemini';
 import { Bot, X, Send, MessageCircle } from 'lucide-react';
 import ApiService from '../api/api';
 
+const HIDDEN_ROUTES = ['/writing-exam', '/mock-exam/writing'];
+
 const Chatbot = () => {
+    const { pathname } = useLocation();
     const [isOpen, setIsOpen] = useState(false);
     const [isPaymentOpen, setIsPaymentOpen] = useState(false);
     const [datesContext, setDatesContext] = useState('');
@@ -137,7 +141,7 @@ const Chatbot = () => {
         }
     };
 
-    if (isPaymentOpen) return null;
+    if (isPaymentOpen || HIDDEN_ROUTES.some(r => pathname.startsWith(r))) return null;
 
     return (
         <div className="fixed bottom-28 right-4 lg:bottom-6 lg:right-6 z-50 flex flex-col items-end pointer-events-none">

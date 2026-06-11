@@ -226,6 +226,26 @@ class ApiService {
       test_date: testDateId
     });
   }
+
+  // ── Writing exam ────────────────────────────────────────
+  async writingStart(fullName, passportId) {
+    return axiosInstance.post('/writing/start', {
+      full_name: fullName,
+      passport_id: passportId,
+    }, { skipAuth: true });
+  }
+
+  async writingAutosave(sessionId, content) {
+    return axiosInstance.patch(`/writing/session/${sessionId}/autosave`, { content }, { skipAuth: true });
+  }
+
+  async writingSubmit(sessionId, content) {
+    return axiosInstance.post(`/writing/session/${sessionId}/submit`, { content }, { skipAuth: true });
+  }
+
+  async writingGetSession(sessionId) {
+    return axiosInstance.get(`/writing/session/${sessionId}`, { skipAuth: true });
+  }
 }
 
 export default new ApiService();

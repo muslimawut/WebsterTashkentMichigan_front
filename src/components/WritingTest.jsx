@@ -1,57 +1,89 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { safeJsonParse } from '../utils/sanitize';
+import ApiService from '../api/api';
+import websterLogo from '../../logowhitewebster.png';
 
 const WritingTest = () => {
   const navigate = useNavigate();
-  
-  // Essay prompt
-  const essayPrompt = `Technology has significantly changed the way people communicate. Some people believe that technology has improved communication, while others think it has made communication less personal.
 
-Discuss both views and give your own opinion. Support your answer with specific examples and reasons.
+  // ── Intro screen state ──
+  const [introStep, setIntroStep]     = useState(true);
+  const [fullName, setFullName]       = useState('');
+  const [passportId, setPassportId]   = useState('');
+  const [startLoading, setStartLoading] = useState(false);
+  const [startError, setStartError]   = useState('');
 
-Write your essay below.`;
+  // ── Session ──
+  const [sessionId, setSessionId]     = useState(null);
+  const [promptData, setPromptData]   = useState(null); // {title, text, instructions, min_words, max_words}
 
   const [essayText, setEssayText] = useState('');
   const [totalTime, setTotalTime] = useState(0);
-  const [remainingTime, setRemainingTime] = useState(60 * 60); // 60 minutes
+  const [remainingTime, setRemainingTime] = useState(60 * 60);
   const [wordCount, setWordCount] = useState(0);
   const [charCount, setCharCount] = useState(0);
   const [showSubmitWarning, setShowSubmitWarning] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showViolationModal, setShowViolationModal] = useState(false);
+  const [violationReason, setViolationReason] = useState('');
   const [testStarted, setTestStarted] = useState(false);
   const [showMouseWarning, setShowMouseWarning] = useState(false);
   const [mouseLeaveCount, setMouseLeaveCount] = useState(0);
-  
-  const textareaRef = useRef(null);
-  const totalTimerRef = useRef(null);
-  const countdownTimerRef = useRef(null);
-  const hasSubmittedRef = useRef(false);
-  const warningTimeoutRef = useRef(null);
-  const mouseLeaveCountRef = useRef(0);
 
-  // Start test
+  const textareaRef        = useRef(null);
+  const totalTimerRef      = useRef(null);
+  const countdownTimerRef  = useRef(null);
+  const hasSubmittedRef    = useRef(false);
+  const warningTimeoutRef  = useRef(null);
+  const mouseLeaveCountRef = useRef(0);
+  const autosaveTimerRef   = useRef(null);
+  const sessionIdRef       = useRef(null);
+
+  // ── Handle Begin Writing ──
+  const handleBeginWriting = async () => {
+    if (!fullName.trim() || !passportId.trim()) return;
+    setStartLoading(true);
+    setStartError('');
+    try {
+      const res = await ApiService.writingStart(fullName.trim(), passportId.trim());
+      setSessionId(res.id);
+      sessionIdRef.current = res.id;
+      // prompt is an object
+      setPromptData(res.prompt || null);
+      // resume: pre-fill existing content
+      if (res.content) setEssayText(res.content);
+      // use server's remaining time
+      if (res.seconds_left) setRemainingTime(res.seconds_left);
+      setIntroStep(false);
+      setTestStarted(true);
+    } catch (err) {
+      const status = err?.response?.status;
+      if (status === 403) {
+        setStartError('Full name or passport ID does not match registration records.');
+      } else if (status === 404) {
+        setStartError('No active writing prompt found. Please contact the administrator.');
+      } else {
+        setStartError('Something went wrong. Please try again.');
+      }
+    } finally {
+      setStartLoading(false);
+    }
+  };
+
+  // Fullscreen only when test actually starts
   useEffect(() => {
-    setTestStarted(true);
-    
-    // Request fullscreen
+    if (!testStarted) return;
     const enterFullscreen = async () => {
       try {
         const elem = document.documentElement;
-        if (elem.requestFullscreen) {
-          await elem.requestFullscreen();
-        } else if (elem.webkitRequestFullscreen) { // Safari
-          await elem.webkitRequestFullscreen();
-        } else if (elem.msRequestFullscreen) { // IE11
-          await elem.msRequestFullscreen();
-        }
-      } catch (err) {
-      }
+        const req = elem.requestFullscreen || elem.webkitRequestFullscreen || elem.msRequestFullscreen;
+        if (req) await req.call(elem);
+      } catch (_) {}
     };
-    
     enterFullscreen();
-  }, []);
+  }, [testStarted]);
 
   // Count words and characters
   useEffect(() => {
@@ -78,9 +110,21 @@ Write your essay below.`;
       });
     }, 1000);
 
+    // Autosave every 30 seconds — 409 means session expired on server
+    autosaveTimerRef.current = setInterval(() => {
+      if (sessionIdRef.current && !hasSubmittedRef.current) {
+        ApiService.writingAutosave(sessionIdRef.current, essayText).catch(err => {
+          if (err?.response?.status === 409) {
+            handleAutoSubmit('Time expired');
+          }
+        });
+      }
+    }, 30000);
+
     return () => {
       if (totalTimerRef.current) clearInterval(totalTimerRef.current);
       if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+      if (autosaveTimerRef.current) clearInterval(autosaveTimerRef.current);
     };
   }, [testStarted]);
 
@@ -389,47 +433,35 @@ Write your essay below.`;
     };
 
 
-    // Determine if cheating was detected
     const cheatingReasons = [
-      'Tab switched or window minimized',
-      'Window focus lost - switched to another application',
-      'Exited fullscreen mode',
+      'Tab switched or window minimized 3 times',
+      'Window focus lost 3 times',
+      'Exited fullscreen mode 3 times',
       'Mouse left screen 3 times - suspicious activity',
-      'Mouse moved to restricted area 3 times - suspicious activity'
+      'Mouse moved to screen edges 3 times',
     ];
-    const isCheating = cheatingReasons.includes(reason);
+    const isCheating = cheatingReasons.some(r => reason.includes(r.split(' ')[0]) && reason.includes('3'));
 
-    // Save writing results
-    const writingResults = {
-      wordCount,
-      timeSpent: totalTime,
-      submitted: true,
-      cheatingDetected: isCheating,
-      cheatingReason: isCheating ? reason : null
-    };
+    if (isCheating) {
+      // Show violation modal — do NOT go to results page
+      setViolationReason(reason);
+      setShowViolationModal(true);
+      setTimeout(() => {
+        const exit = document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen || document.msExitFullscreen;
+        if (exit && (document.fullscreenElement || document.webkitFullscreenElement)) {
+          exit.call(document).catch(() => {}).finally(() => navigate('/'));
+        } else {
+          navigate('/');
+        }
+      }, 4000);
+      return;
+    }
 
-    // Get existing results from localStorage or create new
+    // Time expired — go to results
     let allResults = safeJsonParse(localStorage.getItem('mockExamResults'), {});
-    allResults.writing = writingResults;
+    allResults.writing = { wordCount, timeSpent: totalTime, submitted: true, cheatingDetected: false };
     localStorage.setItem('mockExamResults', JSON.stringify(allResults));
-
-    // TODO: Send to API
-    /*
-    fetch('YOUR_API/submit-essay', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(submissionData)
-    })
-    .then(res => res.json())
-    .then(data => console.log('Submitted:', data))
-    .catch(err => console.error('Error:', err));
-    */
-
-    // Navigate to results page
-    navigate('/mock-exam/results', { 
-      replace: true,
-      state: { results: allResults }
-    });
+    navigate('/mock-exam/results', { replace: true, state: { results: allResults } });
   };
 
   // Manual submit
@@ -437,12 +469,23 @@ Write your essay below.`;
     setShowSubmitWarning(true);
   };
 
-  const handleConfirmSubmit = () => {
+  const handleConfirmSubmit = async () => {
     setShowSubmitWarning(false);
     if (hasSubmittedRef.current) return;
     hasSubmittedRef.current = true;
     if (totalTimerRef.current) clearInterval(totalTimerRef.current);
     if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+    if (autosaveTimerRef.current) clearInterval(autosaveTimerRef.current);
+
+    // Submit to API
+    if (sessionIdRef.current) {
+      try {
+        await ApiService.writingSubmit(sessionIdRef.current, essayText);
+      } catch (e) {
+        console.error('Submit error:', e);
+      }
+    }
+
     setShowSuccessModal(true);
     setTimeout(() => {
       const exit = document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen || document.msExitFullscreen;
@@ -465,6 +508,146 @@ Write your essay below.`;
   const handleTextChange = (e) => {
     setEssayText(e.target.value);
   };
+
+  // ── Intro screen ──
+  if (introStep) {
+    const ready = fullName.trim() && passportId.trim() && !startLoading;
+    const features = [
+      { icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z', label: '60 Minutes', desc: 'Timed writing session' },
+      { icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', label: '1 Essay Task', desc: 'One writing prompt' },
+      { icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z', label: 'CEFR Graded', desc: 'International standard' },
+    ];
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4 py-8" style={{ backgroundColor: '#f0f2f5' }}>
+        <div className="w-full max-w-4xl">
+          <div className="bg-white rounded-3xl overflow-hidden shadow-2xl flex flex-col md:flex-row">
+
+            {/* ── Left panel (dark blue) ── */}
+            <div className="md:w-5/12 relative overflow-hidden flex flex-col justify-between p-10" style={{ backgroundColor: '#1a3460', minHeight: 480 }}>
+              <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at bottom left, #0d2147 0%, transparent 65%), radial-gradient(ellipse at top right, #2a5298 0%, transparent 60%)' }} />
+
+              <div className="relative">
+                {/* Logo */}
+                <div className="mb-8">
+                  <img src={websterLogo} alt="Webster University" className="h-9 object-contain" />
+                </div>
+
+                <p className="text-xs font-bold tracking-widest mb-3" style={{ color: 'rgba(255,255,255,0.45)', letterSpacing: '0.14em' }}>
+                  MICHIGAN ENGLISH PROFICIENCY TEST
+                </p>
+                <h2 className="text-3xl font-bold text-white leading-tight mb-2">
+                  Writing<br />Section
+                </h2>
+                <p className="text-sm mb-10" style={{ color: 'rgba(255,255,255,0.55)' }}>
+                  Demonstrate your English writing skills with a timed essay.
+                </p>
+
+                {/* Features */}
+                <div className="space-y-4">
+                  {features.map(f => (
+                    <div key={f.label} className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}>
+                        <svg className="w-4.5 h-4.5 w-[18px] h-[18px]" style={{ color: 'rgba(255,255,255,0.85)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d={f.icon} />
+                        </svg>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-white">{f.label}</p>
+                        <p className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>{f.desc}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Bottom badge */}
+              <div className="relative mt-10">
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold" style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)' }}>
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />
+                  Secure &amp; Proctored
+                </div>
+              </div>
+            </div>
+
+            {/* ── Right panel (white) ── */}
+            <div className="md:w-7/12 flex flex-col justify-center px-10 py-10">
+              <h3 className="text-2xl font-bold mb-1" style={{ color: '#1a3460' }}>Enter your details</h3>
+              <p className="text-sm text-gray-400 mb-8">Your information must match your registration records.</p>
+
+              <div className="space-y-5 mb-6">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Full name</label>
+                  <input
+                    value={fullName}
+                    onChange={e => setFullName(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && document.getElementById('passportInput').focus()}
+                    placeholder="Your full name"
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 text-gray-800 outline-none transition-all"
+                    style={{ fontSize: 15 }}
+                    onFocus={e => { e.target.style.borderColor = '#1a3460'; e.target.style.boxShadow = '0 0 0 3px rgba(26,52,96,0.08)'; }}
+                    onBlur={e => { e.target.style.borderColor = '#e5e7eb'; e.target.style.boxShadow = 'none'; }}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Passport serial &amp; number</label>
+                  <input
+                    id="passportInput"
+                    value={passportId}
+                    onChange={e => setPassportId(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleBeginWriting()}
+                    placeholder="e.g. AB7545522"
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 text-gray-800 outline-none transition-all"
+                    style={{ fontSize: 15 }}
+                    onFocus={e => { e.target.style.borderColor = '#1a3460'; e.target.style.boxShadow = '0 0 0 3px rgba(26,52,96,0.08)'; }}
+                    onBlur={e => { e.target.style.borderColor = '#e5e7eb'; e.target.style.boxShadow = 'none'; }}
+                  />
+                  <p className="text-xs text-gray-400 mt-1.5">Must match your registration for an active test date.</p>
+                </div>
+              </div>
+
+              {startError && (
+                <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3 mb-5 flex items-start gap-2.5">
+                  <svg className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd"/>
+                  </svg>
+                  <p className="text-sm text-red-700">{startError}</p>
+                </div>
+              )}
+
+              <button
+                onClick={handleBeginWriting}
+                disabled={!ready}
+                className="w-full py-3.5 rounded-xl font-bold text-base transition-all duration-200 flex items-center justify-center gap-2"
+                style={{
+                  backgroundColor: ready ? '#1a3460' : '#e5e7eb',
+                  color: ready ? 'white' : '#9ca3af',
+                  cursor: ready ? 'pointer' : 'not-allowed',
+                  boxShadow: ready ? '0 4px 16px rgba(26,52,96,0.28)' : 'none',
+                }}
+                onMouseEnter={e => { if (ready) e.currentTarget.style.backgroundColor = '#122548'; }}
+                onMouseLeave={e => { if (ready) e.currentTarget.style.backgroundColor = '#1a3460'; }}
+              >
+                {startLoading ? (
+                  <>
+                    <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                    </svg>
+                    Checking...
+                  </>
+                ) : 'Begin writing'}
+              </button>
+
+              <p className="text-center text-xs text-gray-400 mt-3">
+                Once you begin, the 60-minute timer starts and cannot be paused.
+              </p>
+            </div>
+
+          </div>{/* end flex */}
+        </div>
+      </div>
+    );
+  }
 
   // Submitted state
   if (isSubmitted) {
@@ -546,20 +729,37 @@ Write your essay below.`;
                   <svg className="w-6 h-6" style={{ color: '#024890' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
-                  <h3 className="text-lg font-bold text-gray-900">Essay Prompt</h3>
+                  <h3 className="text-lg font-bold text-gray-900">
+                    {promptData?.title || 'Essay Prompt'}
+                  </h3>
                 </div>
                 <div className="prose prose-sm max-w-none">
-                  <p className="text-gray-700 whitespace-pre-line leading-relaxed">
-                    {essayPrompt}
+                  <p className="text-gray-700 leading-relaxed mb-3">
+                    {promptData?.text || ''}
                   </p>
+                  {promptData?.instructions && (
+                    <p className="text-xs text-gray-500 italic border-t border-dashed border-gray-200 pt-3">
+                      {promptData.instructions}
+                    </p>
+                  )}
                 </div>
 
-                <div className="mt-6 pt-6 border-t border-gray-200">
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <div className="flex justify-between text-xs text-gray-500 mb-3">
+                    <span>Min words: <strong>{promptData?.min_words ?? 250}</strong></span>
+                    <span>Max words: <strong>{promptData?.max_words ?? 350}</strong></span>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-gray-200">
                   <h4 className="font-semibold text-gray-900 mb-3">Statistics:</h4>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
                       <span className="text-gray-600">Words:</span>
-                      <span className="font-semibold">{wordCount}</span>
+                      <span className={`font-semibold ${
+                        wordCount < (promptData?.min_words ?? 250) ? 'text-amber-500' :
+                        wordCount > (promptData?.max_words ?? 350) ? 'text-red-500' : 'text-green-600'
+                      }`}>{wordCount}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Characters:</span>
@@ -660,6 +860,32 @@ Remember to:
       </div>
 
       {/* Success Modal */}
+      {/* Violation Auto-Close Modal */}
+      {showViolationModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-10 text-center">
+            <div className="mx-auto w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mb-6">
+              <svg className="w-10 h-10 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd"/>
+              </svg>
+            </div>
+            <h3 className="text-2xl font-bold text-gray-900 mb-3">Essay Automatically Closed</h3>
+            <p className="text-gray-600 mb-4">
+              You have violated the exam rules <strong>3 times</strong>. Your essay session has been terminated.
+            </p>
+            <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-3 mb-6">
+              <p className="text-sm text-red-700 font-medium">
+                ⚠️ Repeated violations may result in disqualification from the Webster University entrance exam.
+              </p>
+            </div>
+            <p className="text-sm text-gray-400">Redirecting to home page in 4 seconds...</p>
+            <div className="mt-4 w-full bg-gray-200 rounded-full h-1 overflow-hidden">
+              <div className="h-1 rounded-full" style={{ backgroundColor: '#dc2626', width: '100%', animation: 'shrink 4s linear forwards' }} />
+            </div>
+          </div>
+        </div>
+      )}
+
       {showSuccessModal && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-10 text-center">
