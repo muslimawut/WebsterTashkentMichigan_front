@@ -5,7 +5,7 @@ import { sendMessageToGemini } from '../utils/gemini';
 import { Bot, X, Send, MessageCircle } from 'lucide-react';
 import ApiService from '../api/api';
 
-const HIDDEN_ROUTES = ['/writing-exam', '/mock-exam/writing'];
+const HIDDEN_ROUTES = ['/writing-exam', '/writing-test', '/writing-instructions'];
 
 const Chatbot = () => {
     const { pathname } = useLocation();

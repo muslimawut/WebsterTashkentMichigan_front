@@ -8,7 +8,7 @@ const WritingInstructions = () => {
 
   const handleStartWriting = () => {
     if (agreedToRules) {
-      navigate('/mock-exam/writing');
+      navigate('/writing-test');
     }
   };
 

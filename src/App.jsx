@@ -154,13 +154,13 @@ export default function App() {
 
           {/* Writing Instructions Route */}
           <Route
-            path="/mock-exam/writing-instructions"
+            path="/writing-instructions"
             element={<WritingInstructions />}
           />
 
           {/* Writing Test Route */}
           <Route
-            path="/mock-exam/writing"
+            path="/writing-test"
             element={<WritingTest />}
           />
 
