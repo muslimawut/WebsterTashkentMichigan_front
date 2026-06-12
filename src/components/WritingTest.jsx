@@ -32,7 +32,7 @@ const WritingTest = () => {
   const [showMouseWarning, setShowMouseWarning] = useState(false);
   const [mouseLeaveCount, setMouseLeaveCount] = useState(0);
   // layout: 'stack' | 'side' | 'wide'
-  const [layout, setLayout] = useState('wide');
+  const [layout, setLayout] = useState('stack');
 
   const textareaRef        = useRef(null);
   const totalTimerRef      = useRef(null);
@@ -239,14 +239,16 @@ const WritingTest = () => {
     };
 
     const handleWindowBlur = () => {
+      // Ignore if focus moved to another element within the same page (e.g. layout toggle)
+      if (document.activeElement && document.activeElement !== document.body) return;
       if (testStarted && !isSubmitted && !hasSubmittedRef.current && !isWarningActive) {
         isWarningActive = true; // Prevent multiple triggers
-        
+
         mouseLeaveCountRef.current += 1;
         const newCount = mouseLeaveCountRef.current;
         setMouseLeaveCount(newCount);
         setShowMouseWarning(true);
-        
+
         // Check if reached 3 warnings
         if (newCount >= 3) {
           handleAutoSubmit('Window focus lost 3 times');
@@ -258,7 +260,7 @@ const WritingTest = () => {
           warningTimeoutRef.current = setTimeout(() => {
             setShowMouseWarning(false);
           }, 5000);
-          
+
           // Cooldown period - prevent new warning for 3 seconds
           cooldownTimer = setTimeout(() => {
             isWarningActive = false;
@@ -336,10 +338,10 @@ const WritingTest = () => {
       const isFullscreen = document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement;
       
       if (isFullscreen) {
-        const atTop = e.clientY <= 5;
-        const atBottom = e.clientY >= window.innerHeight - 5;
-        
-        if (atTop || atBottom) {
+        // Only trigger at very top (browser bar area) — ignore bottom
+        const atTop = e.clientY <= 2;
+
+        if (atTop) {
           isWarningActive = true;
           
           mouseLeaveCountRef.current += 1;
@@ -371,9 +373,10 @@ const WritingTest = () => {
     
     const handleMouseLeave = (e) => {
       if (!testStarted || isSubmitted || hasSubmittedRef.current || isWarningActive) return;
-      
-      // Only trigger if mouse actually leaves the window boundaries
-      if (e.clientY < 0 || e.clientX < 0 || 
+      // Only trigger if fullscreen and mouse truly exits the viewport
+      const isFullscreen = document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement;
+      if (!isFullscreen) return;
+      if (e.clientY < 0 || e.clientX < 0 ||
           e.clientX > window.innerWidth || e.clientY > window.innerHeight) {
         
         isWarningActive = true;
