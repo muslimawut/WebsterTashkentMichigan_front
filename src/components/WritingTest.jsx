@@ -42,6 +42,7 @@ const WritingTest = () => {
   const mouseLeaveCountRef = useRef(0);
   const autosaveTimerRef   = useRef(null);
   const sessionIdRef       = useRef(null);
+  const essayTextRef       = useRef('');
 
   // ── Handle Begin Writing ──
   const handleBeginWriting = async () => {
@@ -54,8 +55,17 @@ const WritingTest = () => {
       sessionIdRef.current = res.id;
       // prompt is an object
       setPromptData(res.prompt || null);
-      // resume: pre-fill existing content
-      if (res.content) setEssayText(res.content);
+
+      // ── Resume content: localStorage is the most recent local state, use it first ──
+      let backupContent = '';
+      try {
+        const raw = localStorage.getItem(`writing_backup_${res.id}`);
+        if (raw) backupContent = JSON.parse(raw)?.text || '';
+      } catch (_) {}
+      // localStorage takes priority (updated on every keystroke); fall back to server content
+      const resumeText = backupContent || res.content || '';
+      if (resumeText) setEssayText(resumeText);
+
       // use server's remaining time
       if (res.seconds_left) setRemainingTime(res.seconds_left);
       setIntroStep(false);
@@ -89,8 +99,9 @@ const WritingTest = () => {
     enterFullscreen();
   }, [testStarted]);
 
-  // Count words and characters
+  // Count words and characters + keep ref in sync for timers/autosave
   useEffect(() => {
+    essayTextRef.current = essayText;
     const words = essayText.trim().split(/\s+/).filter(word => word.length > 0);
     setWordCount(words.length);
     setCharCount(essayText.length);
@@ -114,21 +125,9 @@ const WritingTest = () => {
       });
     }, 1000);
 
-    // Autosave every 30 seconds — 409 means session expired on server
-    autosaveTimerRef.current = setInterval(() => {
-      if (sessionIdRef.current && !hasSubmittedRef.current) {
-        ApiService.writingAutosave(sessionIdRef.current, essayText).catch(err => {
-          if (err?.response?.status === 409) {
-            handleAutoSubmit('Time expired');
-          }
-        });
-      }
-    }, 30000);
-
     return () => {
       if (totalTimerRef.current) clearInterval(totalTimerRef.current);
       if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
-      if (autosaveTimerRef.current) clearInterval(autosaveTimerRef.current);
     };
   }, [testStarted]);
 
@@ -164,10 +163,21 @@ const WritingTest = () => {
     };
   }, [testStarted]);
 
-  // Prevent page unload/refresh
+  // Save to localStorage on every text change (instant backup)
+  useEffect(() => {
+    if (!testStarted || !essayText) return;
+    const key = `writing_backup_${sessionIdRef.current || 'draft'}`;
+    localStorage.setItem(key, JSON.stringify({ text: essayText, savedAt: Date.now() }));
+  }, [essayText, testStarted]);
+
+  // Prevent page unload/refresh — save to localStorage only (no API)
   useEffect(() => {
     const handleBeforeUnload = (e) => {
       if (!isSubmitted && !hasSubmittedRef.current) {
+        // Save to localStorage only — API is NOT called on unload
+        const key = `writing_backup_${sessionIdRef.current || 'draft'}`;
+        localStorage.setItem(key, JSON.stringify({ text: essayText, savedAt: Date.now() }));
+
         e.preventDefault();
         e.returnValue = 'Your essay will be submitted if you leave this page.';
         return e.returnValue;
@@ -176,7 +186,7 @@ const WritingTest = () => {
 
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [isSubmitted]);
+  }, [isSubmitted, essayText]);
 
   // Prevent back button
   useEffect(() => {
@@ -420,34 +430,31 @@ const WritingTest = () => {
   }, [testStarted, isSubmitted]);
 
   // Auto-submit function
-  const handleAutoSubmit = (reason) => {
+  const handleAutoSubmit = async (reason) => {
     if (hasSubmittedRef.current) return;
-    
+
     hasSubmittedRef.current = true;
     setIsSubmitted(true);
 
     // Clear timers
     if (totalTimerRef.current) clearInterval(totalTimerRef.current);
     if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+    if (autosaveTimerRef.current) clearInterval(autosaveTimerRef.current);
 
-    const submissionData = {
-      reason,
-      essayText,
-      wordCount,
-      charCount,
-      timeSpent: totalTime,
-      timestamp: new Date().toISOString()
-    };
+    // ── Submit to API (saves essay in submitted/auto_submitted status) ──
+    if (sessionIdRef.current) {
+      try {
+        await ApiService.writingSubmit(sessionIdRef.current, essayText);
+        // Clear localStorage backup after successful submit
+        localStorage.removeItem(`writing_backup_${sessionIdRef.current}`);
+      } catch (e) {
+        console.error('Auto-submit API error:', e);
+      }
+    }
 
-
-    const cheatingReasons = [
-      'Tab switched or window minimized 5 times',
-      'Window focus lost 5 times',
-      'Exited fullscreen mode 5 times',
-      'Mouse left screen 5 times - suspicious activity',
-      'Mouse moved to screen edges 5 times',
-    ];
-    const isCheating = cheatingReasons.some(r => reason.includes(r.split(' ')[0]) && reason.includes('3'));
+    // A violation occurred if reason mentions a repeated count or fullscreen/tab/mouse rule
+    const isCheating = /times|suspicious|edges|focus lost|switched|fullscreen/i.test(reason)
+      && !/Time expired/i.test(reason);
 
     if (isCheating) {
       // Show violation modal — do NOT go to results page
@@ -464,11 +471,16 @@ const WritingTest = () => {
       return;
     }
 
-    // Time expired — go to results
-    let allResults = safeJsonParse(localStorage.getItem('mockExamResults'), {});
-    allResults.writing = { wordCount, timeSpent: totalTime, submitted: true, cheatingDetected: false };
-    localStorage.setItem('mockExamResults', JSON.stringify(allResults));
-    navigate('/mock-exam/results', { replace: true, state: { results: allResults } });
+    // Time expired — show success then go home
+    setShowSuccessModal(true);
+    setTimeout(() => {
+      const exit = document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen || document.msExitFullscreen;
+      if (exit && (document.fullscreenElement || document.webkitFullscreenElement)) {
+        exit.call(document).catch(() => {}).finally(() => navigate('/'));
+      } else {
+        navigate('/');
+      }
+    }, 3000);
   };
 
   // Manual submit
@@ -488,6 +500,7 @@ const WritingTest = () => {
     if (sessionIdRef.current) {
       try {
         await ApiService.writingSubmit(sessionIdRef.current, essayText);
+        localStorage.removeItem(`writing_backup_${sessionIdRef.current}`);
       } catch (e) {
         console.error('Submit error:', e);
       }
