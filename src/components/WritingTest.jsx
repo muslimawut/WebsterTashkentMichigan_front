@@ -218,9 +218,9 @@ const WritingTest = () => {
         setMouseLeaveCount(newCount);
         setShowMouseWarning(true);
         
-        // Check if reached 3 warnings
-        if (newCount >= 3) {
-          handleAutoSubmit('Tab switched or window minimized 3 times');
+        // Check if reached 5 warnings
+        if (newCount >= 5) {
+          handleAutoSubmit('Tab switched or window minimized 5 times');
         } else {
           // Auto hide warning after 5 seconds
           if (warningTimeoutRef.current) {
@@ -249,9 +249,9 @@ const WritingTest = () => {
         setMouseLeaveCount(newCount);
         setShowMouseWarning(true);
 
-        // Check if reached 3 warnings
-        if (newCount >= 3) {
-          handleAutoSubmit('Window focus lost 3 times');
+        // Check if reached 5 warnings
+        if (newCount >= 5) {
+          handleAutoSubmit('Window focus lost 5 times');
         } else {
           // Auto hide warning after 5 seconds
           if (warningTimeoutRef.current) {
@@ -280,9 +280,9 @@ const WritingTest = () => {
         setMouseLeaveCount(newCount);
         setShowMouseWarning(true);
         
-        // Check if reached 3 warnings
-        if (newCount >= 3) {
-          handleAutoSubmit('Exited fullscreen mode 3 times');
+        // Check if reached 5 warnings
+        if (newCount >= 5) {
+          handleAutoSubmit('Exited fullscreen mode 5 times');
         } else {
           // Auto hide warning after 5 seconds
           if (warningTimeoutRef.current) {
@@ -349,9 +349,9 @@ const WritingTest = () => {
           setMouseLeaveCount(newCount);
           setShowMouseWarning(true);
           
-          // Check if reached 3 warnings
-          if (newCount >= 3) {
-            handleAutoSubmit('Mouse moved to screen edges 3 times');
+          // Check if reached 5 warnings
+          if (newCount >= 5) {
+            handleAutoSubmit('Mouse moved to screen edges 5 times');
             return;
           }
           
@@ -386,8 +386,8 @@ const WritingTest = () => {
         setMouseLeaveCount(newCount);
         setShowMouseWarning(true);
         
-        if (newCount >= 3) {
-          handleAutoSubmit('Mouse left screen 3 times - suspicious activity');
+        if (newCount >= 5) {
+          handleAutoSubmit('Mouse left screen 5 times - suspicious activity');
           return;
         }
         
@@ -441,11 +441,11 @@ const WritingTest = () => {
 
 
     const cheatingReasons = [
-      'Tab switched or window minimized 3 times',
-      'Window focus lost 3 times',
-      'Exited fullscreen mode 3 times',
-      'Mouse left screen 3 times - suspicious activity',
-      'Mouse moved to screen edges 3 times',
+      'Tab switched or window minimized 5 times',
+      'Window focus lost 5 times',
+      'Exited fullscreen mode 5 times',
+      'Mouse left screen 5 times - suspicious activity',
+      'Mouse moved to screen edges 5 times',
     ];
     const isCheating = cheatingReasons.some(r => reason.includes(r.split(' ')[0]) && reason.includes('3'));
 
@@ -692,7 +692,7 @@ const WritingTest = () => {
                 { icon: '🚫', text: 'No tab/window switch' },
                 { icon: '🔄', text: 'No refresh' },
                 { icon: '◀️', text: 'No go back' },
-                { icon: '⚠️', text: '3 violations = close' },
+                { icon: '⚠️', text: '5 violations = close' },
               ].map(rule => (
                 <span key={rule.text} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
                   <span>{rule.icon}</span>
@@ -911,7 +911,7 @@ Remember to:
             </div>
             <h3 className="text-2xl font-bold text-gray-900 mb-3">Essay Automatically Closed</h3>
             <p className="text-gray-600 mb-4">
-              You have violated the exam rules <strong>3 times</strong>. Your essay session has been terminated.
+              You have violated the exam rules <strong>5 times</strong>. Your essay session has been terminated.
             </p>
             <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-3 mb-6">
               <p className="text-sm text-red-700 font-medium">
@@ -1002,8 +1002,8 @@ Remember to:
               <p className="font-bold">⚠️ {mouseLeaveCount >= 2 ? 'FINAL WARNING!' : 'Warning!'}</p>
               <p className="text-sm">
                 {mouseLeaveCount >= 2 
-                  ? `One more time and essay will auto-submit! (${mouseLeaveCount}/3)`
-                  : `Keep your mouse in the center area! (${mouseLeaveCount}/3)`
+                  ? `One more time and essay will auto-submit! (${mouseLeaveCount}/5)`
+                  : `Keep your mouse in the center area! (${mouseLeaveCount}/5)`
                 }
               </p>
             </div>
