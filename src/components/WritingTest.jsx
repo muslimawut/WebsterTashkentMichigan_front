@@ -994,14 +994,14 @@ Remember to:
       {/* Mouse Leave Warning */}
       {showMouseWarning && (
         <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 animate-bounce">
-          <div className={`${mouseLeaveCount >= 2 ? 'bg-red-700' : 'bg-red-600'} text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 max-w-md`}>
+          <div className={`${mouseLeaveCount >= 4 ? 'bg-red-700' : 'bg-red-600'} text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 max-w-md`}>
             <svg className="w-6 h-6 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
             </svg>
             <div>
-              <p className="font-bold">⚠️ {mouseLeaveCount >= 2 ? 'FINAL WARNING!' : 'Warning!'}</p>
+              <p className="font-bold">⚠️ {mouseLeaveCount >= 4 ? 'FINAL WARNING!' : 'Warning!'}</p>
               <p className="text-sm">
-                {mouseLeaveCount >= 2 
+                {mouseLeaveCount >= 4 
                   ? `One more time and essay will auto-submit! (${mouseLeaveCount}/5)`
                   : `Keep your mouse in the center area! (${mouseLeaveCount}/5)`
                 }
