@@ -31,6 +31,8 @@ const WritingTest = () => {
   const [testStarted, setTestStarted] = useState(false);
   const [showMouseWarning, setShowMouseWarning] = useState(false);
   const [mouseLeaveCount, setMouseLeaveCount] = useState(0);
+  // layout: 'stack' | 'side' | 'wide'
+  const [layout, setLayout] = useState('wide');
 
   const textareaRef        = useRef(null);
   const totalTimerRef      = useRef(null);
@@ -64,6 +66,8 @@ const WritingTest = () => {
         setStartError('Full name or passport ID does not match registration records.');
       } else if (status === 404) {
         setStartError('No active writing prompt found. Please contact the administrator.');
+      } else if (status === 500) {
+        setStartError('Server error. Please try again or contact support if the issue persists.');
       } else {
         setStartError('Something went wrong. Please try again.');
       }
@@ -158,7 +162,7 @@ const WritingTest = () => {
       textarea.removeEventListener('contextmenu', preventAction);
       textarea.removeEventListener('keydown', preventKeyboardShortcuts);
     };
-  }, []);
+  }, [testStarted]);
 
   // Prevent page unload/refresh
   useEffect(() => {
@@ -318,7 +322,7 @@ const WritingTest = () => {
         clearTimeout(cooldownTimer);
       }
     };
-  }, [isSubmitted]);
+  }, [testStarted, isSubmitted]);
 
   // Detect mouse leaving the screen completely OR going to edges in fullscreen
   useEffect(() => {
@@ -410,7 +414,7 @@ const WritingTest = () => {
         clearTimeout(cooldownTimer);
       }
     };
-  }, [isSubmitted]);
+  }, [testStarted, isSubmitted]);
 
   // Auto-submit function
   const handleAutoSubmit = (reason) => {
@@ -670,29 +674,78 @@ const WritingTest = () => {
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#f8f9fa' }}>
       {/* Header */}
       <div className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
-          <div className="flex items-center justify-between flex-wrap gap-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3">
+          {/* Top row */}
+          <div className="flex items-center justify-between flex-wrap gap-3 mb-2">
             <div>
-              <h1 className="text-xl font-bold" style={{ color: '#024890' }}>
-                Writing Test
-              </h1>
-              <p className="text-sm text-gray-500">Essay Writing - 60 minutes</p>
+              <h1 className="text-lg font-bold" style={{ color: '#024890' }}>Writing Test</h1>
             </div>
-            
-            <div className="flex items-center gap-6">
-              <div className="text-right">
-                <div className="text-sm text-gray-500">Words</div>
-                <div className="text-lg font-bold text-gray-700">
-                  {wordCount}
-                </div>
+
+            {/* Rules badges */}
+            <div className="hidden md:flex items-center gap-2 flex-wrap">
+              {[
+                { icon: '⛔', text: 'No copy-paste' },
+                { icon: '🔒', text: 'Stay fullscreen' },
+                { icon: '🚫', text: 'No tab/window switch' },
+                { icon: '🔄', text: 'No refresh' },
+                { icon: '◀️', text: 'No go back' },
+                { icon: '⚠️', text: '3 violations = close' },
+              ].map(rule => (
+                <span key={rule.text} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                  <span>{rule.icon}</span>
+                  {rule.text}
+                </span>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-4">
+
+              {/* Layout toggle */}
+              <div className="flex items-center bg-gray-100 rounded-lg p-0.5 gap-0.5">
+                {[
+                  { key: 'stack', title: 'Stacked', icon: (
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                      <rect x="1" y="1" width="14" height="5" rx="1.5"/>
+                      <rect x="1" y="9" width="14" height="5" rx="1.5"/>
+                    </svg>
+                  )},
+                  { key: 'side', title: 'Side by side', icon: (
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                      <rect x="1" y="1" width="5" height="14" rx="1.5"/>
+                      <rect x="9" y="1" width="6" height="14" rx="1.5"/>
+                    </svg>
+                  )},
+                  { key: 'wide', title: 'Wide sidebar', icon: (
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                      <rect x="1" y="1" width="8" height="14" rx="1.5"/>
+                      <rect x="11" y="1" width="4" height="14" rx="1.5"/>
+                    </svg>
+                  )},
+                ].map(({ key, title, icon }) => (
+                  <button
+                    key={key}
+                    title={title}
+                    onClick={() => setLayout(key)}
+                    className={`p-1.5 rounded-md transition-all ${
+                      layout === key
+                        ? 'bg-white shadow text-blue-600'
+                        : 'text-gray-400 hover:text-gray-600'
+                    }`}
+                  >
+                    {icon}
+                  </button>
+                ))}
               </div>
-              
+
               <div className="text-right">
-                <div className="text-sm text-gray-500">Time Remaining</div>
-                <div className={`text-2xl font-bold ${
-                  remainingTime < 300 ? 'text-red-600 animate-pulse' : 
-                  remainingTime < 600 ? 'text-orange-600' : 
-                  'text-green-600'
+                <div className="text-xs text-gray-400">Words</div>
+                <div className="text-base font-bold text-gray-700">{wordCount}</div>
+              </div>
+              <div className="text-right">
+                <div className="text-xs text-gray-400">Time Left</div>
+                <div className={`text-xl font-bold tabular-nums ${
+                  remainingTime < 300 ? 'text-red-600 animate-pulse' :
+                  remainingTime < 600 ? 'text-orange-500' : 'text-green-600'
                 }`}>
                   {formatTime(remainingTime)}
                 </div>
@@ -720,69 +773,73 @@ const WritingTest = () => {
 
       {/* Main Content */}
       <div className="flex-1 overflow-auto">
-        <div className="max-w-6xl mx-auto px-4 py-8">
-          <div className="grid lg:grid-cols-3 gap-6">
+        <div className="max-w-7xl mx-auto px-4 py-6">
+          <div className={`gap-5 ${
+            layout === 'stack' ? 'flex flex-col' :
+            layout === 'side'  ? 'grid grid-cols-3' :
+                                 'grid grid-cols-2'
+          }`}>
             {/* Sidebar */}
-            <div className="lg:col-span-1">
-              <div className="bg-white rounded-2xl shadow-xl p-6 sticky top-24">
-                <div className="flex items-center gap-2 mb-4">
-                  <svg className="w-6 h-6" style={{ color: '#024890' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  <h3 className="text-lg font-bold text-gray-900">
-                    {promptData?.title || 'Essay Prompt'}
-                  </h3>
-                </div>
-                <div className="prose prose-sm max-w-none">
-                  <p className="text-gray-700 leading-relaxed mb-3">
+            <div className={layout === 'stack' ? 'w-full' : 'col-span-1'}>
+              <div className="bg-white rounded-2xl shadow-xl flex flex-col">
+
+                {/* Prompt */}
+                <div className="p-6">
+                  <div className="flex items-center gap-2 mb-3">
+                    <svg className="w-5 h-5 flex-shrink-0" style={{ color: '#024890' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <h3 className="text-base font-bold text-gray-900 leading-tight">
+                      {promptData?.title || 'Essay Prompt'}
+                    </h3>
+                  </div>
+
+                  <p className="text-sm text-gray-700 leading-relaxed mb-3">
                     {promptData?.text || ''}
                   </p>
+
                   {promptData?.instructions && (
-                    <p className="text-xs text-gray-500 italic border-t border-dashed border-gray-200 pt-3">
+                    <p className="text-xs text-gray-500 italic border-t border-dashed border-gray-200 pt-3 leading-relaxed">
                       {promptData.instructions}
                     </p>
                   )}
                 </div>
 
-                <div className="mt-4 pt-4 border-t border-gray-200">
+                {/* Stats — fixed bottom */}
+                <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl flex-shrink-0">
                   <div className="flex justify-between text-xs text-gray-500 mb-3">
-                    <span>Min words: <strong>{promptData?.min_words ?? 250}</strong></span>
-                    <span>Max words: <strong>{promptData?.max_words ?? 350}</strong></span>
+                    <span>Min: <strong className="text-gray-700">{promptData?.min_words ?? 250}</strong> words</span>
+                    <span>Max: <strong className="text-gray-700">{promptData?.max_words ?? 350}</strong> words</span>
                   </div>
-                </div>
-
-                <div className="pt-4 border-t border-gray-200">
-                  <h4 className="font-semibold text-gray-900 mb-3">Statistics:</h4>
-                  <div className="space-y-2 text-sm">
+                  <div className="space-y-1.5 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Words:</span>
-                      <span className={`font-semibold ${
+                      <span className="text-gray-500">Words</span>
+                      <span className={`font-bold ${
                         wordCount < (promptData?.min_words ?? 250) ? 'text-amber-500' :
                         wordCount > (promptData?.max_words ?? 350) ? 'text-red-500' : 'text-green-600'
                       }`}>{wordCount}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Characters:</span>
-                      <span className="font-semibold">{charCount}</span>
+                      <span className="text-gray-500">Characters</span>
+                      <span className="font-semibold text-gray-700">{charCount}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Time spent:</span>
-                      <span className="font-semibold">{formatTime(totalTime)}</span>
+                      <span className="text-gray-500">Time spent</span>
+                      <span className="font-semibold text-gray-700">{formatTime(totalTime)}</span>
                     </div>
                   </div>
-                </div>
-
-                <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-                  <p className="text-xs text-blue-800">
-                    <strong>Reminder:</strong> Copy/paste is disabled. Type your essay directly.
-                  </p>
+                  <div className="mt-3 px-3 py-2 bg-blue-50 rounded-lg">
+                    <p className="text-xs text-blue-700">
+                      <strong>Reminder:</strong> Copy/paste is disabled.
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
 
             {/* Writing Area */}
-            <div className="lg:col-span-2">
-              <div className="bg-white rounded-2xl shadow-xl p-8">
+            <div className={layout === 'stack' ? 'w-full' : layout === 'side' ? 'col-span-2' : 'col-span-1'}>
+              <div className="bg-white rounded-2xl shadow-xl p-8 flex flex-col">
                 <div className="mb-4">
                   <h3 className="text-xl font-bold text-gray-900 mb-2">Your Essay</h3>
                   <p className="text-sm text-gray-600">
@@ -800,7 +857,7 @@ Remember to:
 • Address all parts of the question
 • Organize your ideas clearly
 • Use proper grammar and vocabulary"
-                  className="w-full h-[600px] p-6 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all resize-none font-mono text-gray-800 leading-relaxed"
+                  className="w-full flex-1 min-h-[500px] p-6 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all resize-none font-mono text-gray-800 leading-relaxed"
                   style={{ fontSize: '16px' }}
                   spellCheck="true"
                   autoFocus
@@ -834,26 +891,6 @@ Remember to:
                 </button>
               </div>
 
-              {/* Important Notes */}
-              <div className="mt-6 bg-red-50 border-l-4 border-red-500 rounded-r-xl p-4">
-                <div className="flex items-start">
-                  <svg className="w-5 h-5 text-red-600 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                  </svg>
-                  <div className="text-sm">
-                    <p className="font-semibold text-red-800 mb-1">⚠️ Important:</p>
-                    <ul className="text-red-700 space-y-1">
-                      <li>• Do not refresh - your work will be lost</li>
-                      <li>• Do not press back - essay will auto-submit</li>
-                      <li>• Do not switch tabs or windows - essay will auto-submit</li>
-                      <li>• Do not exit fullscreen - essay will auto-submit</li>
-                      <li>• Keep mouse in center area - 3 warnings = auto-submit</li>
-                      <li>• Copy/paste is disabled</li>
-                      <li>• Auto-submits when time expires</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
         </div>

@@ -68,7 +68,10 @@ axiosInstance.interceptors.response.use(
     if (error.response && error.response.data) {
       const data = error.response.data;
 
-      if (typeof data === 'string') {
+      // HTML response (e.g. Django 500 page) — don't show raw HTML
+      if (typeof data === 'string' && data.trim().startsWith('<')) {
+        errorMessage = `Server error (${error.response.status})`;
+      } else if (typeof data === 'string') {
         errorMessage = data;
       } else if (data.message) {
         errorMessage = data.message;
