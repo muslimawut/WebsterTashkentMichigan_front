@@ -239,15 +239,20 @@ class ApiService {
     return axiosInstance.get('/videos', { skipAuth: true });
   }
 
-  async createOrder(paymentMethod, cost, testDateId) {
+  async createOrder(paymentMethod, cost, testDateId, promocode) {
     if (!getCsrfToken()) {
       await axiosInstance.get('/dates', { skipAuth: true });
     }
-    return axiosInstance.post('/orders/create/', {
+    const payload = {
       payment_method: paymentMethod.toLowerCase(),
       cost: 1000,
-      test_date: testDateId
-    });
+      test_date: testDateId,
+    };
+    // Promocode kiritilgan bo'lsa, qo'shamiz — backend promocode yo'lidan ketadi
+    if (promocode && promocode.trim()) {
+      payload.promocode = promocode.trim();
+    }
+    return axiosInstance.post('/orders/create/', payload);
   }
 
   // ── Writing exam ────────────────────────────────────────

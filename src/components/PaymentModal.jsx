@@ -11,6 +11,8 @@ import xaznalogo from '../../xazna.png';
 const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
   const navigate = useNavigate();
   const [paymentMethod, setPaymentMethod] = useState('');
+  const [promocode, setPromocode] = useState('');
+  const [confirmedMessage, setConfirmedMessage] = useState('');
   const [isClosing, setIsClosing] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -33,39 +35,58 @@ const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
   if (!isOpen && !isClosing) return null;
   if (!selectedDate) return null;
 
+  const hasPromocode = promocode.trim().length > 0;
+  const canSubmit = hasPromocode || !!paymentMethod;
+
   const handlePayment = async () => {
-    if (paymentMethod) {
-      try {
-        setIsProcessing(true);
-        // Cost fixed at 650000 as requested
-        const response = await api.createOrder(paymentMethod, 650000, selectedDate.id);
+    if (!canSubmit) return;
+    try {
+      setIsProcessing(true);
 
-        const safeUrl = sanitizeUrl(response.payment_url);
-        if (safeUrl) {
-          window.location.href = safeUrl;
-        } else {
-          // If no payment URL (e.g. for cash or other future methods), just close
-          handleModalClose();
-        }
-      } catch (error) {
-        console.error('Payment error:', error);
+      // Promocode kiritilgan bo'lsa — promocode yo'lidan ketamiz (Payme kerak emas)
+      if (hasPromocode) {
+        const response = await api.createOrder('promocode', 650000, selectedDate.id, promocode);
 
-        // Check for various forms of auth error
-        const isAuthError =
-          error?.message?.toLowerCase().includes('authentication credentials') ||
-          error?.response?.status === 401 ||
-          error?.response?.data?.detail?.toLowerCase().includes('authentication') ||
-          error?.message?.toLowerCase().includes('401');
-
-        if (isAuthError) {
-          // Close modal without delay to prevent state updates on unmount
-          setIsClosing(true);
-          onClose();
-          navigate('/auth?tab=signup');
+        // waived: true — to'lov bekor qilindi, booking tasdiqlandi
+        if (response.waived) {
+          setConfirmedMessage(response.message || 'Payment waived via promocode. Your booking is confirmed.');
+          setIsProcessing(false);
           return;
         }
-        setIsProcessing(false); // Only stop processing if not redirecting
+        // Kutilmagan holat: waived emas, lekin xato ham emas — modalni yopamiz
+        handleModalClose();
+        return;
       }
+
+      // Oddiy oqim: Payme va h.k. — payment_url ga yo'naltiramiz
+      const response = await api.createOrder(paymentMethod, 650000, selectedDate.id);
+
+      const safeUrl = sanitizeUrl(response.payment_url);
+      if (safeUrl) {
+        window.location.href = safeUrl;
+      } else {
+        // If no payment URL (e.g. for cash or other future methods), just close
+        handleModalClose();
+      }
+    } catch (error) {
+      console.error('Payment error:', error);
+      // Promocode xatolari (Invalid promocode va h.k.) interceptor orqali toast'da ko'rsatiladi
+
+      // Check for various forms of auth error
+      const isAuthError =
+        error?.message?.toLowerCase().includes('authentication credentials') ||
+        error?.response?.status === 401 ||
+        error?.response?.data?.detail?.toLowerCase().includes('authentication') ||
+        error?.message?.toLowerCase().includes('401');
+
+      if (isAuthError) {
+        // Close modal without delay to prevent state updates on unmount
+        setIsClosing(true);
+        onClose();
+        navigate('/auth?tab=signup');
+        return;
+      }
+      setIsProcessing(false); // Only stop processing if not redirecting
     }
   };
 
@@ -73,6 +94,8 @@ const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
     setIsClosing(true);
     setTimeout(() => {
       setPaymentMethod('');
+      setPromocode('');
+      setConfirmedMessage('');
       onClose();
       setIsClosing(false);
     }, 300);
@@ -131,6 +154,40 @@ const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
 
         {/* Content */}
         <div className="p-6 sm:p-8" style={{ paddingBottom: 'max(3rem, calc(env(safe-area-inset-bottom) + 2rem))' }}>
+          {confirmedMessage ? (
+            /* ── Booking confirmed (promocode bilan to'lov bekor qilindi) ── */
+            <div className="flex flex-col items-center text-center py-6">
+              <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mb-6 border border-green-500/30">
+                <svg className="w-11 h-11 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h2 className="text-2xl font-bold text-white mb-3">Booking Confirmed!</h2>
+              <p className="text-gray-300 text-sm sm:text-base mb-2 max-w-sm">{confirmedMessage}</p>
+              <div className="bg-gray-800 rounded-2xl px-5 py-3 my-5 flex items-center gap-3">
+                <svg className="w-5 h-5 text-blue-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <p className="font-semibold text-white text-sm">{selectedDate.month} {selectedDate.day}, {selectedDate.year}</p>
+              </div>
+              <button
+                onClick={() => {
+                  handleModalClose();
+                  navigate('/profile');
+                }}
+                className="w-full py-4 rounded-xl font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/30 transition-all"
+              >
+                View My Bookings
+              </button>
+              <button
+                onClick={handleModalClose}
+                className="mt-3 text-sm text-gray-400 hover:text-gray-200 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          ) : (
+          <>
           {/* Title */}
           <h2 className="text-xl sm:text-2xl font-bold text-white mb-2 pr-8">Complete Payment</h2>
           <p className="text-gray-400 text-sm mb-6 sm:mb-8">Secure payment for your test registration</p>
@@ -214,11 +271,34 @@ const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
           </div>
 
 
+          {/* Promocode (optional) */}
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-300 mb-3">
+              Promocode <span className="text-gray-500 font-normal">(optional)</span>
+            </label>
+            <input
+              type="text"
+              value={promocode}
+              onChange={(e) => setPromocode(e.target.value.toUpperCase())}
+              disabled={isProcessing}
+              placeholder="Enter promocode"
+              className="w-full px-4 py-3.5 bg-gray-800 border-2 border-gray-700 rounded-xl text-white placeholder-gray-500 tracking-wider uppercase focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all disabled:opacity-50"
+            />
+            {hasPromocode && (
+              <p className="text-xs text-gray-400 mt-2 flex items-center gap-1.5">
+                <svg className="w-4 h-4 text-blue-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                A valid promocode may waive the payment — no card needed.
+              </p>
+            )}
+          </div>
+
           {/* Action Buttons */}
           <button
             onClick={handlePayment}
-            disabled={!paymentMethod || isProcessing}
-            className={`w-full py-4 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${paymentMethod && !isProcessing
+            disabled={!canSubmit || isProcessing}
+            className={`w-full py-4 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${canSubmit && !isProcessing
               ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/30'
               : 'bg-gray-800 text-gray-500 cursor-not-allowed'
               }`}
@@ -232,7 +312,7 @@ const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
                 Processing...
               </>
             ) : (
-              paymentMethod ? `Pay with ${paymentMethod}` : 'Select a payment method'
+              hasPromocode ? 'Confirm with Promocode' : (paymentMethod ? `Pay with ${paymentMethod}` : 'Select a payment method')
             )}
           </button>
 
@@ -243,6 +323,8 @@ const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
             </svg>
             <p className="text-xs text-gray-400">Secure payment powered by Webster University</p>
           </div>
+          </>
+          )}
         </div>
       </div>
     </div>,

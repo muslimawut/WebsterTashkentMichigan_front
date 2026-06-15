@@ -333,7 +333,7 @@ const ProfilePage = () => {
             {/* Profile Info */}
             <div className="flex-1 text-center md:text-left">
               <h2 className="text-3xl md:text-4xl font-bold text-white mb-3">
-                {userData.firstName} {userData.lastName}
+                <span>{userData.firstName}</span> <span>{userData.lastName}</span>
               </h2>
               <p className="text-gray-400 text-lg mb-4 flex items-center gap-2 justify-center md:justify-start">
                 <Mail className="w-5 h-5" />
@@ -518,7 +518,7 @@ const ProfilePage = () => {
                         </div>
                         <p className="text-gray-400 flex items-center gap-2 text-sm">
                           <Calendar className="w-4 h-4" />
-                          {formatBookingDateTime(booking.test_date, booking.time)}
+                          <span>{formatBookingDateTime(booking.test_date, booking.time)}</span>
                           {booking.location && <span className="text-gray-500">· {booking.location}</span>}
                         </p>
                       </div>
@@ -574,7 +574,7 @@ const ProfilePage = () => {
                         </div>
                         <p className="text-gray-400 flex items-center gap-2 text-sm">
                           <Calendar className="w-4 h-4" />
-                          {formatBookingDateTime(booking.test_date, booking.time)}
+                          <span>{formatBookingDateTime(booking.test_date, booking.time)}</span>
                           {booking.location && <span className="text-gray-500">· {booking.location}</span>}
                         </p>
                       </div>
