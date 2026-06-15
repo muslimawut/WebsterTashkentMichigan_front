@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import { reportErrorToTelegram } from '../utils/telegram';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -108,6 +109,24 @@ axiosInstance.interceptors.response.use(
 
     // 🔹 Show toast directly from API layer
     showApiError(errorMessage);
+
+    // 🔹 Adminlarga monitoring uchun Telegramga yuboramiz
+    const status = error.response?.status;
+    // 401 (oddiy login xatosi) va 0 (network) larni ham yuboramiz, faqat
+    // foydalanuvchi tomonidan bekor qilingan so'rovlarni o'tkazib yuboramiz
+    if (error.code !== 'ERR_CANCELED') {
+      let rawDetails = error.response?.data;
+      if (rawDetails && typeof rawDetails === 'object') {
+        rawDetails = JSON.stringify(rawDetails, null, 2);
+      }
+      reportErrorToTelegram({
+        message: errorMessage,
+        status,
+        method: error.config?.method?.toUpperCase(),
+        url: error.config?.url,
+        details: rawDetails,
+      });
+    }
 
     // Throw for catch blocks (AuthPage.jsx, etc.)
     const apiError = new Error(errorMessage);
