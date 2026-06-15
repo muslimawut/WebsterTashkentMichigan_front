@@ -37,6 +37,31 @@ const truncate = (str, max = 700) => {
   return s.length > max ? `${s.slice(0, max)}…` : s;
 };
 
+// So'rov payload'ini chiroyli matnga aylantiramiz (to'liq, hamma maydon bilan)
+const formatPayload = (payload) => {
+  if (payload == null) return null;
+  let obj = payload;
+  if (typeof payload === 'string') {
+    try {
+      obj = JSON.parse(payload);
+    } catch {
+      return payload; // JSON emas (masalan FormData yoki oddiy matn)
+    }
+  }
+  if (obj instanceof FormData) {
+    const entries = {};
+    for (const [k, v] of obj.entries()) {
+      entries[k] = v instanceof File ? `<file: ${v.name}>` : v;
+    }
+    obj = entries;
+  }
+  try {
+    return JSON.stringify(obj, null, 2);
+  } catch {
+    return String(obj);
+  }
+};
+
 // Joriy foydalanuvchi haqida qisqa ma'lumot (agar mavjud bo'lsa)
 const getUserInfo = () => {
   try {
@@ -58,8 +83,9 @@ const getUserInfo = () => {
  * @param {string} [info.method] - HTTP metod (GET/POST...)
  * @param {string} [info.url]    - so'rov manzili
  * @param {string} [info.details] - qo'shimcha texnik tafsilot (raw)
+ * @param {*}      [info.payload] - so'rov tanasi (request body)
  */
-export const reportErrorToTelegram = async ({ message, status, method, url, details } = {}) => {
+export const reportErrorToTelegram = async ({ message, status, method, url, details, payload } = {}) => {
   if (!isConfigured) return; // token sozlanmagan bo'lsa, jim turamiz
 
   // Throttle: bir xil (status + url + message) ni qayta yubormaymiz
@@ -90,8 +116,13 @@ export const reportErrorToTelegram = async ({ message, status, method, url, deta
   lines.push(`🕒 <b>Vaqt:</b> ${escapeHtml(time)} (Toshkent)`);
   lines.push(`🌐 <b>Sahifa:</b> <code>${escapeHtml(window.location.pathname)}</code>`);
 
+  const formattedPayload = formatPayload(payload);
+  if (formattedPayload) {
+    lines.push(``, `📦 <b>Yuborilgan ma‘lumot (payload):</b>`, `<pre>${escapeHtml(truncate(formattedPayload))}</pre>`);
+  }
+
   if (details) {
-    lines.push(``, `🧩 <b>Tafsilot:</b>`, `<pre>${escapeHtml(truncate(details))}</pre>`);
+    lines.push(``, `🧩 <b>Server javobi:</b>`, `<pre>${escapeHtml(truncate(details))}</pre>`);
   }
 
   const text = lines.join('\n');

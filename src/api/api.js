@@ -125,6 +125,7 @@ axiosInstance.interceptors.response.use(
         method: error.config?.method?.toUpperCase(),
         url: error.config?.url,
         details: rawDetails,
+        payload: error.config?.data,
       });
     }
 
