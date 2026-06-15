@@ -82,7 +82,6 @@ const ChangePasswordModal = ({ isOpen, onClose }) => {
         confirmPassword: ''
       });
       setPasswordErrors([]);
-      setNotification(null);
     }, 300);
   };
 
