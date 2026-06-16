@@ -187,11 +187,24 @@ const AuthPage = () => {
     } catch (error) {
       console.error('Registration error:', error);
 
-      // api.js already formatted the error message
-      // Just use error.message directly
-      // const errorMessage = error.message || 'Registration failed. Please try again.';
-
-      showNotification(error.message, 'error');
+      // "already exists" — bu odam allaqachon ro'yxatdan o'tgan.
+      // Xato ko'rsatib qo'ya qolmay, uni Sign In tab'iga yo'naltiramiz.
+      const alreadyExists = /already exists/i.test(error.message || '');
+      if (alreadyExists) {
+        showNotification(
+          'You already have an account with these details. Please sign in instead.',
+          'info'
+        );
+        setActiveTab('signin');
+        setSignUpStep(1);
+        setRegistrationComplete(false);
+        setSelectedDegree('');
+        // Kiritilgan emailni Sign In formasiga oldindan to'ldiramiz
+        setFormData((prev) => ({ ...prev, signInEmail: prev.email, signInPassword: '' }));
+      } else {
+        // api.js already formatted the error message
+        showNotification(error.message, 'error');
+      }
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } finally {
       setLoading(false);
