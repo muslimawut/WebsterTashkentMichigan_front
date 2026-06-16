@@ -41,6 +41,27 @@ const AuthPage = () => {
   // Scroll to top when page opens
   React.useEffect(() => {
     window.scrollTo(0, 0);
+
+    // Ro'yxatdan o'tib, hali emailini tasdiqlamagan bo'lsa — sahifa yangilansa ham
+    // tasdiqlash ekranida qoldiramiz (qayta ro'yxatdan o'tib yurmasligi uchun)
+    try {
+      const pending = JSON.parse(localStorage.getItem('pendingActivation') || 'null');
+      if (pending?.email) {
+        setActiveTab('signup');
+        setSelectedDegree(pending.degree || '');
+        setSignUpStep(2);
+        setRegistrationComplete(true);
+        setFormData((prev) => ({
+          ...prev,
+          email: pending.email,
+          firstName: pending.firstName || '',
+          lastName: pending.lastName || '',
+          phone: pending.phone || '',
+        }));
+      }
+    } catch {
+      // noto'g'ri JSON bo'lsa e'tiborsiz qoldiramiz
+    }
   }, []);
 
   // Show notification helper
@@ -179,6 +200,14 @@ const AuthPage = () => {
 
       // If registration is successful (200), show verification code input
       if (response) {
+        // Refresh'da yo'qolmasligi uchun "tasdiqlash kutilmoqda" holatini saqlaymiz
+        localStorage.setItem('pendingActivation', JSON.stringify({
+          email: formData.email,
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          phone: formData.phone,
+          degree: selectedDegree,
+        }));
         setRegistrationComplete(true);
         showNotification('Registration successful! A verification code has been sent to your email.', 'success');
         // Scroll to top smoothly
@@ -199,6 +228,7 @@ const AuthPage = () => {
         setSignUpStep(1);
         setRegistrationComplete(false);
         setSelectedDegree('');
+        localStorage.removeItem('pendingActivation');
         // Kiritilgan emailni Sign In formasiga oldindan to'ldiramiz
         setFormData((prev) => ({ ...prev, signInEmail: prev.email, signInPassword: '' }));
       } else {
@@ -232,6 +262,9 @@ const AuthPage = () => {
         localStorage.setItem('userEmail', formData.email);
         localStorage.removeItem('currentPage'); // Clear current page
       }
+
+      // Tasdiqlash tugadi — pending holatni o'chiramiz
+      localStorage.removeItem('pendingActivation');
 
       showNotification('Account activated successfully! Redirecting...', 'success');
 
@@ -338,6 +371,7 @@ const AuthPage = () => {
                         setSignUpStep(1);
                         setRegistrationComplete(false);
                         setSelectedDegree('');
+                        localStorage.removeItem('pendingActivation');
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                       }}
                       className={`flex-1 py-3 px-4 rounded-lg text-sm sm:text-base font-semibold transition-all duration-200 ${activeTab === 'signin'
@@ -353,6 +387,7 @@ const AuthPage = () => {
                         setSignUpStep(1);
                         setRegistrationComplete(false);
                         setSelectedDegree('');
+                        localStorage.removeItem('pendingActivation');
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                       }}
                       className={`flex-1 py-3 px-4 rounded-lg text-sm sm:text-base font-semibold transition-all duration-200 ${activeTab === 'signup'
