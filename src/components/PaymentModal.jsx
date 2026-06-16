@@ -208,7 +208,7 @@ const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
               </div>
               <div className="text-right shrink-0">
                 <p className="text-xs sm:text-sm text-gray-400">Amount</p>
-                <p className="font-bold text-white text-sm sm:text-base">650,000 Sum</p>
+                <p className="font-bold text-white text-sm sm:text-base">650,000 UZS</p>
               </div>
             </div>
 
@@ -271,25 +271,39 @@ const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
           </div>
 
 
-          {/* Promocode (optional) */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-300 mb-3">
-              Promocode <span className="text-gray-500 font-normal">(optional)</span>
-            </label>
+          {/* Promocode (optional) — highlighted so it's hard to miss */}
+          <div className={`mb-6 rounded-2xl p-4 sm:p-5 border-2 transition-all ${hasPromocode
+            ? 'bg-blue-500/10 border-blue-500/50'
+            : 'bg-blue-500/5 border-blue-500/30 border-dashed'
+            }`}>
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 bg-blue-500/20 rounded-xl flex items-center justify-center shrink-0 border border-blue-500/30">
+                {/* Ticket / tag icon */}
+                <svg className="w-5 h-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5a1.99 1.99 0 011.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.99 1.99 0 013 9V4a1 1 0 011-1z" />
+                </svg>
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm whitespace-nowrap">
+                  <span className="font-bold text-white">Have a promo code?</span>{' '}
+                 
+                </p>
+              </div>
+            </div>
             <input
               type="text"
               value={promocode}
               onChange={(e) => setPromocode(e.target.value.toUpperCase())}
               disabled={isProcessing}
-              placeholder="Enter promocode"
-              className="w-full px-4 py-3.5 bg-gray-800 border-2 border-gray-700 rounded-xl text-white placeholder-gray-500 tracking-wider uppercase focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all disabled:opacity-50"
+              placeholder="ENTER PROMOCODE"
+              className="w-full px-4 py-3.5 bg-gray-900/60 border-2 border-blue-500/40 rounded-xl text-white placeholder-gray-500 tracking-wider uppercase font-semibold text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all disabled:opacity-50"
             />
             {hasPromocode && (
-              <p className="text-xs text-gray-400 mt-2 flex items-center gap-1.5">
-                <svg className="w-4 h-4 text-blue-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <p className="text-xs text-green-400 mt-3 flex items-center justify-center gap-1.5 font-medium">
+                <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                 </svg>
-                A valid promocode may waive the payment — no card needed.
+                A valid promocode waives the payment — no card needed.
               </p>
             )}
           </div>

@@ -4,7 +4,10 @@
 const BOT_TOKEN = import.meta.env.VITE_TELEGRAM_BOT_TOKEN;
 const CHAT_ID = import.meta.env.VITE_TELEGRAM_CHAT_ID;
 
-const isConfigured = Boolean(BOT_TOKEN && CHAT_ID);
+// Lokal (localhost / 127.0.0.1) xatolar Telegramga ketmaydi
+const isLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+
+const isConfigured = Boolean(BOT_TOKEN && CHAT_ID && !isLocalhost);
 
 // Bir xil xatolik qayta-qayta yuborilmasligi uchun oddiy throttle (60s)
 const recentlySent = new Map();
