@@ -41,7 +41,7 @@ const TestDatesSection = ({ onDateSelect }) => {
             address: 'Webster University',
             dateObj
           };
-        }).filter(date => date.dateObj >= today).slice(0, 4);
+        }).filter(date => date.dateObj >= today && !date.isFull).slice(0, 4);
 
         setTestDates(formattedDates);
         setError(null);
