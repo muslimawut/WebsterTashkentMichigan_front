@@ -145,7 +145,7 @@ const AuthPage = () => {
 
       showNotification('Sign in successful!', 'success');
       setTimeout(() => {
-        navigate('/'); // Navigate to home
+        navigate(redirectPath); // redirect param bo'lsa o'sha sahifaga, bo'lmasa home
         window.location.reload(); // Reload to update navbar state
       }, 1000);
     } catch (error) {
