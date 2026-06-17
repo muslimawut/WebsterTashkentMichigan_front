@@ -65,7 +65,7 @@ const TestDatesPage = () => {
             address: 'Webster University',
             dateObj
           };
-        }).filter(date => date.dateObj >= today && !date.isFull);
+        }).filter(date => date.dateObj >= today);
 
         setTestDates(formattedDates);
         setError(null);
