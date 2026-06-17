@@ -56,7 +56,12 @@ const HeroSection = () => {
             LEARN MORE
           </button>
           <button
-            onClick={() => navigate('/auth?tab=signup&redirect=/test-dates')}
+            onClick={() => {
+              // Token bo'lsa (login qilingan) — to'g'ridan-to'g'ri test sanalariga,
+              // bo'lmasa avval ro'yxatdan o'tish/kirish sahifasiga
+              const token = localStorage.getItem('authToken');
+              navigate(token ? '/test-dates' : '/auth?tab=signup&redirect=/test-dates');
+            }}
             className="flex-1 sm:flex-none px-4 py-3 sm:px-8 sm:py-4 rounded-lg text-sm sm:text-lg font-semibold transition-all duration-300 hover:scale-105 transform shadow-lg hover:shadow-2xl text-center whitespace-nowrap"
             style={{ backgroundColor: '#024890', color: '#fff' }}
           >
