@@ -35,6 +35,22 @@ const HomePage = ({ onSignUpClick, isLoggedIn }) => {
     setShowDateModal(true);
   };
 
+  // Auth'dan keyin qaytganda — saqlangan booking bo'lsa, modalni avtomatik ochamiz
+  useEffect(() => {
+    const token = localStorage.getItem('authToken');
+    const pending = localStorage.getItem('pendingBooking');
+    if (token && pending) {
+      try {
+        const date = JSON.parse(pending);
+        setSelectedDate(date);
+        setShowDateModal(true);
+      } catch {
+        // noto'g'ri JSON bo'lsa e'tiborsiz qoldiramiz
+      }
+      localStorage.removeItem('pendingBooking');
+    }
+  }, []);
+
   return (
     <>
       {/* Navbar faqat home page da */}

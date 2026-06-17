@@ -12,6 +12,22 @@ const TestDatesPage = () => {
     setSelectedDate(date);
     setShowDateModal(true);
   };
+
+  // Auth'dan keyin qaytganda — saqlangan booking bo'lsa, modalni avtomatik ochamiz
+  useEffect(() => {
+    const token = localStorage.getItem('authToken');
+    const pending = localStorage.getItem('pendingBooking');
+    if (token && pending) {
+      try {
+        const date = JSON.parse(pending);
+        setSelectedDate(date);
+        setShowDateModal(true);
+      } catch {
+        // noto'g'ri JSON bo'lsa e'tiborsiz qoldiramiz
+      }
+      localStorage.removeItem('pendingBooking');
+    }
+  }, []);
   const [isVisible, setIsVisible] = useState(false);
   const [testDates, setTestDates] = useState([]);
   const [loading, setLoading] = useState(true);

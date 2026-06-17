@@ -80,10 +80,16 @@ const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
         error?.message?.toLowerCase().includes('401');
 
       if (isAuthError) {
+        // Auth'dan keyin booking'ni davom ettirish uchun tanlangan sanani saqlaymiz
+        try {
+          localStorage.setItem('pendingBooking', JSON.stringify(selectedDate));
+        } catch {
+          // localStorage ishlamasa ham oqimni buzmaymiz
+        }
         // Close modal without delay to prevent state updates on unmount
         setIsClosing(true);
         onClose();
-        navigate('/auth?tab=signup');
+        navigate('/auth?tab=signup&redirect=/test-dates');
         return;
       }
       setIsProcessing(false); // Only stop processing if not redirecting

@@ -145,8 +145,10 @@ const AuthPage = () => {
 
       showNotification('Sign in successful!', 'success');
       setTimeout(() => {
-        navigate(redirectPath); // redirect param bo'lsa o'sha sahifaga, bo'lmasa home
-        window.location.reload(); // Reload to update navbar state
+        // Bitta to'liq navigatsiya: redirect sahifasiga o'tadi + navbar yangilanadi.
+        // (navigate + reload qilsak resume useEffect pendingBooking'ni reload'dan
+        //  oldin o'chirib yuborardi va modal ochilmasdi)
+        window.location.href = redirectPath;
       }, 1000);
     } catch (error) {
       console.error('Sign in error:', error);
@@ -269,8 +271,8 @@ const AuthPage = () => {
       showNotification('Account activated successfully! Redirecting...', 'success');
 
       setTimeout(() => {
-        navigate(redirectPath);
-        window.location.reload();
+        // Bitta to'liq navigatsiya (navigate + reload resume'ni buzardi)
+        window.location.href = redirectPath;
       }, 1500);
     } catch (error) {
       console.error('Verification error:', error);
