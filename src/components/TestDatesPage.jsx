@@ -44,6 +44,8 @@ const TestDatesPage = () => {
         // Transform API data to match our component format
         const today = new Date();
         today.setHours(0, 0, 0, 0);
+        const now = new Date(); // hozirgi sana + vaqt
+        const TWO_HOURS_MS = 2 * 60 * 60 * 1000; // imtihondan 2 soat oldin yashiramiz
 
         const formattedDates = response.map(date => {
           const dateObj = new Date(date.date);
@@ -65,7 +67,17 @@ const TestDatesPage = () => {
             address: 'Webster University',
             dateObj
           };
-        }).filter(date => date.dateObj >= today);
+        }).filter(date => {
+          // Vaqti aniq bo'lsa (masalan "14:00") — imtihonga 2 soatdan kam qolganda yashiramiz
+          // (14:00 imtihon -> 12:00 gacha ko'rinadi, 12:01 da yo'qoladi)
+          const hasValidTime = date.time && /^\d{1,2}:\d{2}/.test(date.time);
+          if (hasValidTime) {
+            const slot = new Date(`${date.originalDate}T${date.time}`);
+            return slot.getTime() - now.getTime() >= TWO_HOURS_MS;
+          }
+          // Vaqt noaniq ("To be announced") — faqat sana bo'yicha tekshiramiz
+          return date.dateObj >= today;
+        });
 
         setTestDates(formattedDates);
         setError(null);

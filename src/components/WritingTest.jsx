@@ -4,6 +4,64 @@ import { safeJsonParse } from '../utils/sanitize';
 import ApiService from '../api/api';
 import websterLogo from '../../logowhitewebster.png';
 
+// Article matnini paragraflarga ajratib chiqaradi.
+// Ikkilangan qator ("\r\n\r\n") — yangi paragraf; yakka "\r\n" — shunchaki bo'sh joy.
+const renderArticleParagraphs = (raw) => {
+  if (!raw) return null;
+  const paragraphs = raw
+    .replace(/\r\n/g, '\n')
+    .split(/\n{2,}/)                  // faqat 2+ qator paragraf ajratadi
+    .map((p) => p.replace(/\n/g, ' ').replace(/\s{2,}/g, ' ').trim()) // yakka qator -> bo'sh joy
+    .filter(Boolean);
+  return paragraphs.map((p, i) => (
+    <p key={i} className="text-[15px] text-gray-700 leading-relaxed mb-3 last:mb-0">
+      {p}
+    </p>
+  ));
+};
+
+// Instructions'ni "Part N" bo'limlari va bullet'larga ajratib, ko'rinarli chiqaradi
+const renderInstructions = (raw) => {
+  if (!raw) return null;
+  // Bir qatorga keltirib, "Part N (...)" bo'yicha bo'lamiz
+  const normalized = raw.replace(/\r\n/g, '\n').replace(/\s*\n\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
+  const segments = normalized
+    .split(/(?=Part\s*\d+\s*\([^)]*\))/i)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  return segments.map((seg, i) => {
+    const headingMatch = seg.match(/^(Part\s*\d+\s*\([^)]*\))\s*-?\s*(.*)$/i);
+    const heading = headingMatch ? headingMatch[1] : null;
+    const body = headingMatch ? headingMatch[2] : seg;
+    // Bullet'larga ajratamiz: dash oldidan bo'sh joy bo'lsa (so'z ichidagi tire emas)
+    const bullets = body
+      .split(/\s+-\s*/)
+      .map((b) => b.trim())
+      .filter(Boolean);
+
+    return (
+      <div key={i} className="mb-4 last:mb-0">
+        {heading && (
+          <p className="text-sm font-bold text-[#024890] mb-2">{heading}</p>
+        )}
+        {bullets.length > 1 ? (
+          <ul className="space-y-1.5">
+            {bullets.map((b, j) => (
+              <li key={j} className="flex gap-2 text-sm text-gray-700 leading-relaxed">
+                <span className="text-[#024890] font-bold mt-0.5 flex-shrink-0">•</span>
+                <span>{b}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-gray-700 leading-relaxed">{bullets[0] || body}</p>
+        )}
+      </div>
+    );
+  });
+};
+
 const WritingTest = () => {
   const navigate = useNavigate();
 
@@ -810,14 +868,22 @@ const WritingTest = () => {
                     </h3>
                   </div>
 
-                  <p className="text-sm text-gray-700 leading-relaxed mb-3">
-                    {promptData?.text || ''}
-                  </p>
+                  <div className="mb-4">
+                    {renderArticleParagraphs(promptData?.text)}
+                  </div>
 
                   {promptData?.instructions && (
-                    <p className="text-xs text-gray-500 italic border-t border-dashed border-gray-200 pt-3 leading-relaxed">
-                      {promptData.instructions}
-                    </p>
+                    <div className="border-t-2 border-[#024890]/20 pt-4 mt-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <svg className="w-5 h-5 flex-shrink-0 text-[#024890]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                        <h4 className="text-base font-bold text-[#024890]">Instructions</h4>
+                      </div>
+                      <div className="bg-blue-50/60 border border-blue-100 rounded-xl p-4">
+                        {renderInstructions(promptData.instructions)}
+                      </div>
+                    </div>
                   )}
                 </div>
 

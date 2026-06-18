@@ -17,9 +17,11 @@ const TestDatesSection = ({ onDateSelect }) => {
         setLoading(true);
         const response = await ApiService.getDates();
 
-        // Transform API data to match our component format
+       
         const today = new Date();
         today.setHours(0, 0, 0, 0);
+        const now = new Date(); 
+        const TWO_HOURS_MS = 2 * 60 * 60 * 1000; 
 
         const formattedDates = response.map(date => {
           const dateObj = new Date(date.date);
@@ -41,7 +43,16 @@ const TestDatesSection = ({ onDateSelect }) => {
             address: 'Webster University',
             dateObj
           };
-        }).filter(date => date.dateObj >= today ).slice(0, 4);
+        }).filter(date => {
+          
+          const hasValidTime = date.time && /^\d{1,2}:\d{2}/.test(date.time);
+          if (hasValidTime) {
+            const slot = new Date(`${date.originalDate}T${date.time}`);
+            return slot.getTime() - now.getTime() >= TWO_HOURS_MS;
+          }
+         
+          return date.dateObj >= today;
+        }).slice(0, 4);
 
         setTestDates(formattedDates);
         setError(null);
