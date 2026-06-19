@@ -7,6 +7,19 @@ import 'react-toastify/dist/ReactToastify.css';
 
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
+// Tugmalar ichida ko'rsatiladigan loading spinner
+const Spinner = () => (
+  <svg
+    className="animate-spin h-5 w-5 text-current"
+    xmlns="http://www.w3.org/2000/svg"
+    fill="none"
+    viewBox="0 0 24 24"
+  >
+    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+  </svg>
+);
+
 const AuthPage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -36,6 +49,7 @@ const AuthPage = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [showSignInPassword, setShowSignInPassword] = useState(false);
   const [passwordErrors, setPasswordErrors] = useState([]);
+  const [passportError, setPassportError] = useState('');
   const [loading, setLoading] = useState(false);
 
   // Scroll to top when page opens
@@ -98,17 +112,54 @@ const AuthPage = () => {
   };
 
 
+  // Kirill / rus harflarini olib tashlaydi (faqat lotin matn qoladi)
+  const stripCyrillic = (value) => value.replace(/[Ѐ-ӿԀ-ԯ]/g, '');
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
+    const cleanValue = stripCyrillic(value);
+
     setFormData({
       ...formData,
-      [name]: value
+      [name]: cleanValue
     });
+
+    // Foydalanuvchi kirill harf yozsa, ogohlantiramiz
+    if (cleanValue !== value) {
+      showNotification('Cyrillic letters are not allowed. Please use Latin letters.', 'warning');
+    }
 
     // Password validation
     if (name === 'password') {
-      validatePassword(value);
+      validatePassword(cleanValue);
     }
+
+    // Passport validation
+    if (name === 'passportCode') {
+      validatePassport(cleanValue);
+    }
+  };
+
+  // Passport: faqat harf/raqam, kamida 1 harf va 1 raqam, 6-15 belgi
+  const validatePassport = (value) => {
+    if (!value) {
+      setPassportError('');
+      return false;
+    }
+    if (!/^[A-Za-z0-9]+$/.test(value)) {
+      setPassportError('Passport number can only contain Latin letters and numbers');
+      return false;
+    }
+    if (value.length < 6 || value.length > 15) {
+      setPassportError('Passport number must be 6–15 characters long');
+      return false;
+    }
+    if (!/[A-Za-z]/.test(value) || !/[0-9]/.test(value)) {
+      setPassportError('Passport number must contain at least one letter and one number');
+      return false;
+    }
+    setPassportError('');
+    return true;
   };
 
   const validatePassword = (password) => {
@@ -181,6 +232,13 @@ const AuthPage = () => {
 
     if (formData.password !== formData.confirmPassword) {
       showNotification('Passwords do not match!', 'error');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
+    // Passport format tekshiruvi (email yoki noto'g'ri matnni rad etadi)
+    if (!validatePassport(formData.passportCode)) {
+      showNotification('Please enter a valid passport number (Latin letters and numbers only).', 'warning');
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
@@ -490,8 +548,9 @@ const AuthPage = () => {
                       <button
                         type="submit"
                         disabled={loading}
-                        className="w-full bg-[#024890] hover:bg-[#023e7d] text-white py-4 rounded-xl font-bold text-lg transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 disabled:opacity-70 disabled:hover:translate-y-0 mt-4"
+                        className="w-full bg-[#024890] hover:bg-[#023e7d] text-white py-4 rounded-xl font-bold text-lg transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 disabled:opacity-70 disabled:hover:translate-y-0 disabled:cursor-not-allowed mt-4 flex items-center justify-center gap-2"
                       >
+                        {loading && <Spinner />}
                         {loading ? 'Signing In...' : 'Sign In'}
                       </button>
                     </form>
@@ -674,9 +733,17 @@ const AuthPage = () => {
                                 onChange={handleInputChange}
                                 required
                                 disabled={loading}
-                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#024890] focus:border-transparent outline-none transition disabled:opacity-50"
+                                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-[#024890] focus:border-transparent outline-none transition disabled:opacity-50 ${passportError ? 'border-red-400' : 'border-gray-300'}`}
                                 placeholder="AA1234567"
                               />
+                              {passportError && (
+                                <p className="text-sm text-red-600 mt-2 flex items-start">
+                                  <svg className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                                  </svg>
+                                  {passportError}
+                                </p>
+                              )}
                             </div>
 
                             <div>
@@ -792,8 +859,9 @@ const AuthPage = () => {
                             <button
                               type="submit"
                               disabled={loading}
-                              className="w-full bg-gradient-to-r from-[#024890] to-[#024890] hover:from-blue-700 hover:to-indigo-700 text-white py-3 px-4 rounded-lg font-semibold transition-all shadow-lg hover:shadow-xl disabled:opacity-50"
+                              className="w-full bg-gradient-to-r from-[#024890] to-[#024890] hover:from-blue-700 hover:to-indigo-700 text-white py-3 px-4 rounded-lg font-semibold transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                             >
+                              {loading && <Spinner />}
                               {loading ? 'Creating Account...' : 'Complete Registration'}
                             </button>
 
@@ -869,8 +937,9 @@ const AuthPage = () => {
                             <button
                               type="submit"
                               disabled={loading || !formData.verificationCode}
-                              className="w-full bg-green-600 hover:bg-green-700 text-white py-3 px-4 rounded-lg font-semibold transition-all shadow-lg hover:shadow-xl disabled:opacity-50"
+                              className="w-full bg-green-600 hover:bg-green-700 text-white py-3 px-4 rounded-lg font-semibold transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                             >
+                              {loading && <Spinner />}
                               {loading ? 'Verifying...' : 'Verify & Activate Account'}
                             </button>
 

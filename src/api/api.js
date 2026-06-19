@@ -37,6 +37,9 @@ axiosInstance.interceptors.request.use(
 // ✅ Error notification helper
 const showApiError = (message) => {
   if (!message) message = 'An unexpected error occurred';
+  // Massiv yoki boshqa tur kelsa ham buzilmasligi uchun satrga aylantiramiz
+  if (Array.isArray(message)) message = message.join('\n');
+  if (typeof message !== 'string') message = String(message);
 
   // '\n' bo'yicha ajratib, har bir satrni alohida toast sifatida ko'rsatamiz
   const errors = message.split('\n').filter(msg => msg.trim() !== '');
@@ -75,11 +78,12 @@ axiosInstance.interceptors.response.use(
       } else if (typeof data === 'string') {
         errorMessage = data;
       } else if (data.message) {
-        errorMessage = data.message;
+        errorMessage = Array.isArray(data.message) ? data.message.join('\n') : data.message;
       } else if (data.error) {
-        errorMessage = data.error;
+        // error massiv ham bo'lishi mumkin: {"error":["Invalid email or password."]}
+        errorMessage = Array.isArray(data.error) ? data.error.join('\n') : data.error;
       } else if (data.detail) {
-        errorMessage = data.detail;
+        errorMessage = Array.isArray(data.detail) ? data.detail.join('\n') : data.detail;
       } else if (typeof data === 'object') {
         const errors = [];
 
