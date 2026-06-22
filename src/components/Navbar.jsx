@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import logo from '../../logowhitewebster.png';
 import { Home, Calendar, Info, User, PenTool } from 'lucide-react';
@@ -8,6 +8,35 @@ const Navbar = ({ onSignUpClick, isLoggedIn }) => {
   const location = useLocation();
 
   const isActive = (path) => location.pathname === path;
+
+  // Mobile pastki nav: pastga skrollda kichrayadi, tepaga skrollda asliga qaytadi
+  const [isCompact, setIsCompact] = useState(false);
+
+  useEffect(() => {
+    let lastY = window.scrollY;
+    let ticking = false;
+
+    const update = () => {
+      const currentY = window.scrollY;
+      // Yo'nalishni aniqlaymiz (kichik tebranishlar e'tiborga olinmaydi)
+      if (Math.abs(currentY - lastY) > 6) {
+        // Pastga + sahifa tepasidan biroz uzoqlashgan bo'lsa — kichrayadi
+        setIsCompact(currentY > lastY && currentY > 80);
+        lastY = currentY;
+      }
+      ticking = false;
+    };
+
+    const onScroll = () => {
+      if (!ticking) {
+        window.requestAnimationFrame(update);
+        ticking = true;
+      }
+    };
+
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   return (
     <>
@@ -76,7 +105,7 @@ const Navbar = ({ onSignUpClick, isLoggedIn }) => {
 
       {/* Mobile Bottom Navigation */}
       <div className="fixed bottom-4 left-4 right-4 z-50 lg:hidden pointer-events-none">
-        <div className="bg-[#1a1a1a]/80 backdrop-blur-xl border border-white/10 text-gray-400 rounded-2xl flex justify-between items-end px-2 py-2 shadow-2xl pointer-events-auto max-w-sm mx-auto relative h-[70px]">
+        <div className={`bg-[#1a1a1a]/80 backdrop-blur-xl border border-white/10 text-gray-400 rounded-2xl flex justify-between items-end px-2 py-2 shadow-2xl pointer-events-auto max-w-sm mx-auto relative h-[70px] origin-bottom transition-all duration-300 ease-out ${isCompact ? 'scale-[0.78] opacity-80 translate-y-2' : 'scale-100 opacity-100 translate-y-0'}`}>
 
           {/* Home */}
           <Link to="/" className={`flex flex-col items-center justify-center w-14 pb-1 transition-colors ${isActive('/') ? 'text-white' : 'hover:text-gray-200'}`}>

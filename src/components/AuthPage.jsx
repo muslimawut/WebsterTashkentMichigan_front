@@ -81,7 +81,7 @@ const AuthPage = () => {
   // Show notification helper
 
 
-  const showNotification = (message, type = 'success') => {
+  const showNotification = (message, type = 'success', extraOptions = {}) => {
     // Agar xabar string bo‘lsa — \n ni <br/>ga aylantiramiz
     const formattedMessage = typeof message === 'string'
       ? message.split('\n').map((line, index) => (
@@ -100,6 +100,7 @@ const AuthPage = () => {
       pauseOnHover: true,
       draggable: true,
       theme: "light",
+      ...extraOptions,
     };
 
     switch (type) {
@@ -124,9 +125,13 @@ const AuthPage = () => {
       [name]: cleanValue
     });
 
-    // Foydalanuvchi kirill harf yozsa, ogohlantiramiz
+    // Foydalanuvchi kirill harf yozsa, ogohlantiramiz.
+    // Bitta toastId bilan — har harfda yangi toast chiqmasin (spam + closeToast race oldini oladi)
     if (cleanValue !== value) {
-      showNotification('Cyrillic letters are not allowed. Please use Latin letters.', 'warning');
+      showNotification('Cyrillic letters are not allowed. Please use Latin letters.', 'warning', {
+        toastId: 'cyrillic-warning',
+        autoClose: 3000,
+      });
     }
 
     // Password validation

@@ -125,7 +125,9 @@ export const reportErrorToTelegram = async ({ message, status, method, url, deta
   }
 
   if (details) {
-    lines.push(``, `🧩 <b>Server javobi:</b>`, `<pre>${escapeHtml(truncate(details))}</pre>`);
+    // Stack trace bo'lsa, fayl:satr:ustun ma'lumoti kesilmasligi uchun ko'proq joy beramiz
+    const detailsMax = /\n\s*at\s|@http|@\//.test(String(details)) ? 2500 : 700;
+    lines.push(``, `🧩 <b>Server javobi / Stack:</b>`, `<pre>${escapeHtml(truncate(details, detailsMax))}</pre>`);
   }
 
   const text = lines.join('\n');

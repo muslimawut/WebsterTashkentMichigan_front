@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { toast } from 'react-toastify';
 import api from '../api/api';
 import { sanitizeUrl } from '../utils/sanitize';
 import clicklogo from '../../clicklogo.svg';
@@ -15,6 +14,7 @@ const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
   const [confirmedMessage, setConfirmedMessage] = useState('');
   const [isClosing, setIsClosing] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [tooltipFor, setTooltipFor] = useState('');
 
   useEffect(() => {
     if (isOpen) {
@@ -116,12 +116,14 @@ const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
     {
       name: 'Click',
       icon: clicklogo,
-      description: 'Pay with Click'
+      description: 'Pay with Click',
+      disabled: true
     },
     {
       name: 'Xazna',
       icon: xaznalogo,
-      description: 'Pay with Xazna'
+      description: 'Pay with Xazna',
+      disabled: true
     }
   ];
 
@@ -236,18 +238,35 @@ const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
               {paymentOptions.map((option) => (
                 <button
                   key={option.name}
+                  type="button"
                   onClick={() => {
-                    if (option.name === 'Click' || option.name === 'Xazna') {
-                      toast.info('Coming soon');
+                    if (option.disabled) {
+                      // Mobile: tap toggles the "Coming soon" tooltip
+                      setTooltipFor((prev) => (prev === option.name ? '' : option.name));
                       return;
                     }
+                    setTooltipFor('');
                     setPaymentMethod(option.name);
                   }}
-                  className={`group relative p-4 sm:p-5 rounded-2xl border-2 transition-all duration-300 flex sm:block items-center gap-4 sm:gap-0 ${paymentMethod === option.name
-                    ? 'border-blue-500 bg-blue-500/10 shadow-lg shadow-blue-500/20'
-                    : 'border-gray-700 hover:border-gray-600 bg-gray-800 hover:bg-gray-750'
+                  onMouseLeave={() => option.disabled && setTooltipFor('')}
+                  aria-disabled={option.disabled || undefined}
+                  className={`group relative p-4 sm:p-5 rounded-2xl border-2 transition-all duration-300 flex sm:block items-center gap-4 sm:gap-0 ${option.disabled
+                    ? 'border-gray-800 bg-gray-800/40 opacity-50 cursor-not-allowed'
+                    : paymentMethod === option.name
+                      ? 'border-blue-500 bg-blue-500/10 shadow-lg shadow-blue-500/20'
+                      : 'border-gray-700 hover:border-gray-600 bg-gray-800 hover:bg-gray-750'
                     }`}
                 >
+                  {/* Coming soon tooltip — hover (desktop) + tap (mobile) */}
+                  {option.disabled && (
+                    <span
+                      className={`pointer-events-none absolute -top-2 left-1/2 -translate-x-1/2 -translate-y-full z-20 whitespace-nowrap rounded-lg bg-gray-950 px-3 py-1.5 text-xs font-medium text-white shadow-lg border border-gray-700 transition-opacity duration-200 ${tooltipFor === option.name ? 'opacity-100' : 'opacity-0'} sm:group-hover:opacity-100`}
+                    >
+                      Coming soon
+                      <span className="absolute top-full left-1/2 -translate-x-1/2 -mt-px border-4 border-transparent border-t-gray-950" />
+                    </span>
+                  )}
+
                   {/* Icon Container */}
                   <div className="relative w-12 h-12 sm:w-full sm:aspect-square sm:mb-3 flex items-center justify-center rounded-xl p-1 overflow-hidden shrink-0 bg-white/5 sm:bg-transparent">
                     <img
