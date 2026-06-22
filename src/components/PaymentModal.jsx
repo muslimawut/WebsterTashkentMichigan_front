@@ -9,7 +9,7 @@ import xaznalogo from '../../xazna.png';
 
 const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
   const navigate = useNavigate();
-  const [paymentMethod, setPaymentMethod] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('Payme');
   const [promocode, setPromocode] = useState('');
   const [confirmedMessage, setConfirmedMessage] = useState('');
   const [isClosing, setIsClosing] = useState(false);
@@ -99,7 +99,7 @@ const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
   const handleModalClose = () => {
     setIsClosing(true);
     setTimeout(() => {
-      setPaymentMethod('');
+      setPaymentMethod('Payme');
       setPromocode('');
       setConfirmedMessage('');
       onClose();
