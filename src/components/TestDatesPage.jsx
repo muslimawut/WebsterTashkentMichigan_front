@@ -197,40 +197,42 @@ const TestDatesPage = () => {
                     className={`bg-[#1f2937]/90 backdrop-blur-sm rounded-2xl border border-white/10 p-4 flex items-center justify-between active:scale-95 transition-all duration-200 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'}`}
                     style={{ transitionDelay: `${0.1 + (index * 0.1)}s` }}
                   >
-                    {/* Left: Date */}
-                    <div className="flex items-center gap-2 min-w-[30%]">
-                      <span className="text-4xl font-bold text-white">{date.day}</span>
-                      <span className="text-[#f5b706] text-xs font-bold uppercase mt-1">{date.month.substring(0, 3)}</span>
+                    {/* Left: Date + Location */}
+                    <div className="flex flex-col gap-1.5 min-w-[35%]">
+                      <div className="flex items-center gap-2">
+                        <span className="text-4xl font-bold text-white">{date.day}</span>
+                        <span className="text-[#f5b706] text-xs font-bold uppercase mt-1">{date.month.substring(0, 3)}</span>
+                      </div>
+                      {date.location && (
+                        <div className="flex items-center gap-1.5">
+                          <svg className="w-5 h-5 text-[#f5b706] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                          </svg>
+                          <span className="text-white text-base font-bold capitalize">{date.location}</span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Divider */}
                     <div className="w-px h-10 bg-white/10 mx-2"></div>
 
                     {/* Middle: Info */}
-                    <div className="flex-1 flex flex-col justify-center">
-                      <div className={`flex items-center gap-2 text-xs mb-1 ${date.time && date.time.length > 10 ? 'text-yellow-400' : 'text-gray-300'}`}>
-                        <svg className={`w-3.5 h-3.5 ${date.time && date.time.length > 10 ? 'text-yellow-400' : 'text-blue-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <div className="flex-1 flex flex-col justify-center gap-2">
+                      <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold border w-fit ${date.time && date.time.length > 10 ? 'bg-yellow-500/10 text-yellow-300 border-yellow-500/20' : 'bg-blue-500/10 text-blue-300 border-blue-500/20'}`}>
+                        <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                         {date.time && date.time.length > 10 ? 'To be announced' : (date.time || '09:00')}
                       </div>
-                      {date.location && (
-                        <div className="flex items-center gap-1.5 bg-[#f5b706]/10 border border-[#f5b706]/30 rounded-md px-2 py-1 w-fit mb-1">
-                          <svg className="w-3.5 h-3.5 text-[#f5b706] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                          </svg>
-                          <span className="text-[#f5b706] text-xs font-semibold capitalize">{date.location}</span>
-                        </div>
-                      )}
                       {date.isFull ? (
-                        <span className="flex items-center gap-1 text-red-400 text-[10px] font-medium bg-red-500/10 px-2 py-0.5 rounded-md border border-red-500/20 w-fit">
-                          <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                        <span className="inline-flex items-center gap-1.5 text-red-400 text-xs font-semibold bg-red-500/10 px-3 py-1.5 rounded-lg border border-red-500/20 w-fit">
+                          <span className="w-2 h-2 rounded-full bg-red-500"></span>
                           Full
                         </span>
                       ) : (
-                        <span className="flex items-center gap-1 text-green-400 text-[10px] font-medium bg-green-500/10 px-2 py-0.5 rounded-md border border-green-500/20 w-fit">
-                          <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                        <span className="inline-flex items-center gap-1.5 text-green-400 text-xs font-semibold bg-green-500/10 px-3 py-1.5 rounded-lg border border-green-500/20 w-fit">
+                          <span className="w-2 h-2 rounded-full bg-green-500"></span>
                           {date.available} Places Left
                         </span>
                       )}
