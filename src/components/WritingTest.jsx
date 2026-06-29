@@ -286,23 +286,18 @@ const WritingTest = () => {
         setMouseLeaveCount(newCount);
         setShowMouseWarning(true);
         
-        // Check if reached 5 warnings
-        if (newCount >= 5) {
-          handleAutoSubmit('Tab switched or window minimized 5 times');
-        } else {
-          // Auto hide warning after 5 seconds
-          if (warningTimeoutRef.current) {
-            clearTimeout(warningTimeoutRef.current);
-          }
-          warningTimeoutRef.current = setTimeout(() => {
-            setShowMouseWarning(false);
-          }, 5000);
-          
-          // Cooldown period - prevent new warning for 3 seconds
-          cooldownTimer = setTimeout(() => {
-            isWarningActive = false;
-          }, 3000);
+        // Warning only — no auto-submit
+        if (warningTimeoutRef.current) {
+          clearTimeout(warningTimeoutRef.current);
         }
+        warningTimeoutRef.current = setTimeout(() => {
+          setShowMouseWarning(false);
+        }, 5000);
+
+        // Cooldown period - prevent new warning for 3 seconds
+        cooldownTimer = setTimeout(() => {
+          isWarningActive = false;
+        }, 3000);
       }
     };
 
@@ -317,23 +312,18 @@ const WritingTest = () => {
         setMouseLeaveCount(newCount);
         setShowMouseWarning(true);
 
-        // Check if reached 5 warnings
-        if (newCount >= 5) {
-          handleAutoSubmit('Window focus lost 5 times');
-        } else {
-          // Auto hide warning after 5 seconds
-          if (warningTimeoutRef.current) {
-            clearTimeout(warningTimeoutRef.current);
-          }
-          warningTimeoutRef.current = setTimeout(() => {
-            setShowMouseWarning(false);
-          }, 5000);
-
-          // Cooldown period - prevent new warning for 3 seconds
-          cooldownTimer = setTimeout(() => {
-            isWarningActive = false;
-          }, 3000);
+        // Warning only — no auto-submit
+        if (warningTimeoutRef.current) {
+          clearTimeout(warningTimeoutRef.current);
         }
+        warningTimeoutRef.current = setTimeout(() => {
+          setShowMouseWarning(false);
+        }, 5000);
+
+        // Cooldown period - prevent new warning for 3 seconds
+        cooldownTimer = setTimeout(() => {
+          isWarningActive = false;
+        }, 3000);
       }
     };
 
@@ -348,23 +338,18 @@ const WritingTest = () => {
         setMouseLeaveCount(newCount);
         setShowMouseWarning(true);
         
-        // Check if reached 5 warnings
-        if (newCount >= 5) {
-          handleAutoSubmit('Exited fullscreen mode 5 times');
-        } else {
-          // Auto hide warning after 5 seconds
-          if (warningTimeoutRef.current) {
-            clearTimeout(warningTimeoutRef.current);
-          }
-          warningTimeoutRef.current = setTimeout(() => {
-            setShowMouseWarning(false);
-          }, 5000);
-          
-          // Cooldown period - prevent new warning for 3 seconds
-          cooldownTimer = setTimeout(() => {
-            isWarningActive = false;
-          }, 3000);
+        // Warning only — no auto-submit
+        if (warningTimeoutRef.current) {
+          clearTimeout(warningTimeoutRef.current);
         }
+        warningTimeoutRef.current = setTimeout(() => {
+          setShowMouseWarning(false);
+        }, 5000);
+
+        // Cooldown period - prevent new warning for 3 seconds
+        cooldownTimer = setTimeout(() => {
+          isWarningActive = false;
+        }, 3000);
       }
     };
 
@@ -417,12 +402,7 @@ const WritingTest = () => {
           setMouseLeaveCount(newCount);
           setShowMouseWarning(true);
           
-          // Check if reached 5 warnings
-          if (newCount >= 5) {
-            handleAutoSubmit('Mouse moved to screen edges 5 times');
-            return;
-          }
-          
+          // Warning only — no auto-submit
           // Auto hide warning after 5 seconds
           if (warningTimeoutRef.current) {
             clearTimeout(warningTimeoutRef.current);
@@ -454,11 +434,7 @@ const WritingTest = () => {
         setMouseLeaveCount(newCount);
         setShowMouseWarning(true);
         
-        if (newCount >= 5) {
-          handleAutoSubmit('Mouse left screen 5 times - suspicious activity');
-          return;
-        }
-        
+        // Warning only — no auto-submit
         if (warningTimeoutRef.current) {
           clearTimeout(warningTimeoutRef.current);
         }
@@ -763,7 +739,7 @@ const WritingTest = () => {
                 { icon: '🚫', text: 'No tab/window switch' },
                 { icon: '🔄', text: 'No refresh' },
                 { icon: '◀️', text: 'No go back' },
-                { icon: '⚠️', text: '5 violations = close' },
+                { icon: '⚠️', text: 'Violations are recorded' },
               ].map(rule => (
                 <span key={rule.text} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
                   <span>{rule.icon}</span>
@@ -1080,10 +1056,7 @@ Remember to:
             <div>
               <p className="font-bold">⚠️ {mouseLeaveCount >= 4 ? 'FINAL WARNING!' : 'Warning!'}</p>
               <p className="text-sm">
-                {mouseLeaveCount >= 4 
-                  ? `One more time and essay will auto-submit! (${mouseLeaveCount}/5)`
-                  : `Keep your mouse in the center area! (${mouseLeaveCount}/5)`
-                }
+                Keep your mouse in the center area and stay on this page!
               </p>
             </div>
             <button 
