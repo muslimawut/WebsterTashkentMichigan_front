@@ -174,13 +174,7 @@ const WritingTest = () => {
     }, 1000);
 
     countdownTimerRef.current = setInterval(() => {
-      setRemainingTime(prev => {
-        if (prev <= 1) {
-          handleAutoSubmit('Time expired');
-          return 0;
-        }
-        return prev - 1;
-      });
+      setRemainingTime(prev => (prev <= 1 ? 0 : prev - 1));
     }, 1000);
 
     return () => {
@@ -188,6 +182,15 @@ const WritingTest = () => {
       if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
     };
   }, [testStarted]);
+
+  // Auto-submit when the countdown hits zero — runs on the render where
+  // remainingTime becomes 0, so handleAutoSubmit sees the latest state (not a
+  // stale closure), and it isn't fired twice from inside a setState updater.
+  useEffect(() => {
+    if (testStarted && remainingTime === 0 && !hasSubmittedRef.current) {
+      handleAutoSubmit('Time expired');
+    }
+  }, [testStarted, remainingTime]);
 
   // Disable copy, cut, and paste
   useEffect(() => {
@@ -476,9 +479,12 @@ const WritingTest = () => {
     if (autosaveTimerRef.current) clearInterval(autosaveTimerRef.current);
 
     // ── Submit to API (saves essay in submitted/auto_submitted status) ──
+    // Read the essay from the ref, not from `essayText`: this function is often
+    // called from a timer/event closure captured earlier, where `essayText` is
+    // stale. essayTextRef always holds the latest keystrokes.
     if (sessionIdRef.current) {
       try {
-        await ApiService.writingSubmit(sessionIdRef.current, essayText);
+        await ApiService.writingSubmit(sessionIdRef.current, essayTextRef.current);
         // Clear localStorage backup after successful submit
         localStorage.removeItem(`writing_backup_${sessionIdRef.current}`);
       } catch (e) {
@@ -533,7 +539,7 @@ const WritingTest = () => {
     // Submit to API
     if (sessionIdRef.current) {
       try {
-        await ApiService.writingSubmit(sessionIdRef.current, essayText);
+        await ApiService.writingSubmit(sessionIdRef.current, essayTextRef.current);
         localStorage.removeItem(`writing_backup_${sessionIdRef.current}`);
       } catch (e) {
         console.error('Submit error:', e);
