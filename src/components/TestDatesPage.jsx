@@ -223,7 +223,7 @@ const TestDatesPage = () => {
                         <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
-                        {date.time && date.time.length > 10 ? 'To be announced' : (date.time || '09:00')}
+                        {date.time || '09:00'}
                       </div>
                       {date.isFull ? (
                         <span className="inline-flex items-center gap-1.5 text-red-400 text-xs font-semibold bg-red-500/10 px-3 py-1.5 rounded-lg border border-red-500/20 w-fit">
@@ -295,7 +295,7 @@ const TestDatesPage = () => {
                             <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
-                            {date.time.length > 10 ? 'To be announced' : date.time}
+                            {date.time}
                           </div>
                         )}
                         {date.isFull ? (
