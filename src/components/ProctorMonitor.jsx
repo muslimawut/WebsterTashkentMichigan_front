@@ -346,7 +346,7 @@ const ProctorMonitor = () => {
     if (sessionId) return;
     let cancelled = false;
     api.proctorListSessions()
-      .then(async (res) => {
+      .then((res) => {
         if (cancelled) return;
         const list = Array.isArray(res) ? res : (res?.results || res?.sessions || []);
         if (!list.length) {
@@ -354,22 +354,21 @@ const ProctorMonitor = () => {
           return;
         }
 
-        // Yangi Writing sessionlar exam_url=/writing-test bilan darhol aniqlanadi.
-        // Eski sessionlarda ikkala test ham bir xil root URL yuborgan, shuning uchun
-        // detail eventlaridagi writing_* turiga bir marta qarab badge qo'yamiz.
-        const enriched = await Promise.all(list.map(async (item) => {
-          const directKind = getSessionKind(item);
-          if (directKind) return { ...item, _sessionKind: directKind };
+        // List sahifasida har bir session uchun yana /sessions/{id} yubormaymiz.
+        // Badge list response'dagi exam_url/session_type yoki shu browserdagi lokal
+        // metadata'dan aniqlanadi. Backend listga bu maydonlarni qo'shsa, boshqa
+        // browserlarda ham Writing/Metrica badge darhol aniq chiqadi.
+        const enriched = list.map((item) => {
           const id = pick(item, ['id', 'session_id'], '');
-          if (!id) return { ...item, _sessionKind: 'metrica' };
-          try {
-            const detailResponse = await api.proctorGetSession(String(id));
-            const detail = detailResponse?.data || detailResponse || {};
-            return { ...item, _sessionKind: getSessionKind(detail) || 'metrica' };
-          } catch {
-            return { ...item, _sessionKind: 'metrica' };
-          }
-        }));
+          const local = id ? readLocalSession(String(id)) : null;
+          return {
+            ...item,
+            _sessionKind: getSessionKind(item)
+              || getSessionKind(local)
+              || getSessionKind(local?.meta)
+              || 'metrica',
+          };
+        });
         if (!cancelled) setSessions(enriched);
       })
       .catch(() => { if (!cancelled) setSessions(readLocalSessions()); });
@@ -430,6 +429,17 @@ const ProctorMonitor = () => {
         setEvents(completeEvents);
         setError('');
         return pick(data, ['status', 'exam_status', 'state'], null);
+      }
+      // Session mavjud, lekin event hali yo'q bo'lishi mumkin. Statusni tashlab
+      // yubormaymiz: ayniqsa completed session shu yerda tan olinsa polling to'xtaydi.
+      const remoteStatus = pick(data, ['status', 'exam_status', 'state'], null);
+      const remoteId = pick(data, ['id', 'session_id'], null);
+      if (remoteStatus || remoteId) {
+        const local = await loadLocal();
+        setSession(data);
+        setEvents(local?.events || []);
+        setError('');
+        return remoteStatus;
       }
       throw new Error('empty'); // backend bo'sh — lokal logga tushamiz
     } catch {
@@ -684,7 +694,9 @@ const ProctorMonitor = () => {
         <button className="pm-back" onClick={() => navigate('/proctoring/monitor')}>← Back</button>
         <h1>Proctor Monitor</h1>
         <span className="pm-live">
-          {loading ? 'Refreshing…' : (pollingStopped ? 'Completed · polling stopped' : 'Live · every 5s')}
+          {!sessionId
+            ? 'Session list · no polling'
+            : (loading ? 'Refreshing…' : (pollingStopped ? 'Completed · polling stopped' : 'Live · every 5s'))}
         </span>
       </header>
 
