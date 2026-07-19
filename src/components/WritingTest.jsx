@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { safeJsonParse } from '../utils/sanitize';
 import ApiService from '../api/api';
+import { useWritingProctoring } from '../hooks/useWritingProctoring';
 import websterLogo from '../../logowhitewebster.png';
 
 // Article matnini paragraflarga ajratib chiqaradi.
@@ -64,11 +65,27 @@ const renderInstructions = (raw) => {
 
 const WritingTest = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const {
+    monitoringError,
+    startMonitoring,
+    finishMonitoring,
+    reportViolation,
+  } = useWritingProctoring();
+
+  let savedCandidate = {};
+  try {
+    savedCandidate = safeJsonParse(sessionStorage.getItem('writing_candidate'), {}) || {};
+  } catch (_) {}
+  const initialCandidate = {
+    fullName: location.state?.fullName || savedCandidate.fullName || '',
+    passportId: location.state?.passportId || savedCandidate.passportId || '',
+  };
 
   // ── Intro screen state ──
   const [introStep, setIntroStep]     = useState(true);
-  const [fullName, setFullName]       = useState('');
-  const [passportId, setPassportId]   = useState('');
+  const [fullName, setFullName]       = useState(initialCandidate.fullName);
+  const [passportId, setPassportId]   = useState(initialCandidate.passportId);
   const [startLoading, setStartLoading] = useState(false);
   const [startError, setStartError]   = useState('');
 
@@ -108,7 +125,20 @@ const WritingTest = () => {
     setStartLoading(true);
     setStartError('');
     try {
-      const res = await ApiService.writingStart(fullName.trim(), passportId.trim());
+      const candidate = {
+        fullName: fullName.trim(),
+        passportId: passportId.trim(),
+      };
+      // Media permission so'rovlari aynan user bosgan tugma ichida boshlanishi kerak.
+      await startMonitoring(candidate);
+
+      let res;
+      try {
+        res = await ApiService.writingStart(candidate.fullName, candidate.passportId);
+      } catch (error) {
+        await finishMonitoring();
+        throw error;
+      }
       setSessionId(res.id);
       sessionIdRef.current = res.id;
       // prompt is an object
@@ -137,7 +167,7 @@ const WritingTest = () => {
       } else if (status === 500) {
         setStartError('Server error. Please try again or contact support if the issue persists.');
       } else {
-        setStartError('Something went wrong. Please try again.');
+        setStartError(err?.message || monitoringError || 'Could not start monitoring. Please try again.');
       }
     } finally {
       setStartLoading(false);
@@ -199,12 +229,28 @@ const WritingTest = () => {
 
     const preventAction = (e) => {
       e.preventDefault();
+      const eventTypes = {
+        copy: ['copy_attempt', 'Copy attempt during Writing'],
+        cut: ['cut_attempt', 'Cut attempt during Writing'],
+        paste: ['paste_attempt', 'Paste attempt during Writing'],
+        contextmenu: ['context_menu', 'Context menu opened during Writing'],
+      };
+      const violation = eventTypes[e.type];
+      if (violation) reportViolation(violation[0], violation[1]);
       return false;
     };
 
     const preventKeyboardShortcuts = (e) => {
       if ((e.ctrlKey || e.metaKey) && ['c', 'x', 'v', 'C', 'X', 'V'].includes(e.key)) {
         e.preventDefault();
+        const key = e.key.toLowerCase();
+        const eventTypes = {
+          c: ['copy_attempt', 'Copy keyboard shortcut during Writing'],
+          x: ['cut_attempt', 'Cut keyboard shortcut during Writing'],
+          v: ['paste_attempt', 'Paste keyboard shortcut during Writing'],
+        };
+        const violation = eventTypes[key];
+        reportViolation(violation[0], violation[1]);
         return false;
       }
     };
@@ -222,7 +268,7 @@ const WritingTest = () => {
       textarea.removeEventListener('contextmenu', preventAction);
       textarea.removeEventListener('keydown', preventKeyboardShortcuts);
     };
-  }, [testStarted]);
+  }, [reportViolation, testStarted]);
 
   // Save to localStorage on every text change (instant backup)
   useEffect(() => {
@@ -253,6 +299,7 @@ const WritingTest = () => {
   useEffect(() => {
     const handlePopState = () => {
       if (!isSubmitted && !hasSubmittedRef.current) {
+        reportViolation('back_attempt', 'Back button pressed during Writing');
         const confirmLeave = window.confirm(
           'Your essay will be automatically submitted if you go back. Do you want to continue?'
         );
@@ -273,7 +320,7 @@ const WritingTest = () => {
     return () => {
       window.removeEventListener('popstate', handlePopState);
     };
-  }, [isSubmitted]);
+  }, [isSubmitted, reportViolation]);
 
   // Detect tab switch, window blur, or leaving page
   useEffect(() => {
@@ -288,6 +335,7 @@ const WritingTest = () => {
         const newCount = mouseLeaveCountRef.current;
         setMouseLeaveCount(newCount);
         setShowMouseWarning(true);
+        reportViolation('tab_switch', 'Writing tab was hidden');
         
         // Warning only — no auto-submit
         if (warningTimeoutRef.current) {
@@ -314,6 +362,7 @@ const WritingTest = () => {
         const newCount = mouseLeaveCountRef.current;
         setMouseLeaveCount(newCount);
         setShowMouseWarning(true);
+        reportViolation('window_blur', 'Writing window lost focus');
 
         // Warning only — no auto-submit
         if (warningTimeoutRef.current) {
@@ -340,6 +389,7 @@ const WritingTest = () => {
         const newCount = mouseLeaveCountRef.current;
         setMouseLeaveCount(newCount);
         setShowMouseWarning(true);
+        reportViolation('fullscreen_exit', 'Fullscreen exited during Writing');
         
         // Warning only — no auto-submit
         if (warningTimeoutRef.current) {
@@ -380,7 +430,7 @@ const WritingTest = () => {
         clearTimeout(cooldownTimer);
       }
     };
-  }, [testStarted, isSubmitted]);
+  }, [testStarted, isSubmitted, reportViolation]);
 
   // Detect mouse leaving the screen completely OR going to edges in fullscreen
   useEffect(() => {
@@ -404,6 +454,7 @@ const WritingTest = () => {
           const newCount = mouseLeaveCountRef.current;
           setMouseLeaveCount(newCount);
           setShowMouseWarning(true);
+          reportViolation('mouse_edge', 'Mouse moved to browser controls during Writing');
           
           // Warning only — no auto-submit
           // Auto hide warning after 5 seconds
@@ -436,6 +487,7 @@ const WritingTest = () => {
         const newCount = mouseLeaveCountRef.current;
         setMouseLeaveCount(newCount);
         setShowMouseWarning(true);
+        reportViolation('mouse_leave', 'Mouse left the Writing exam window');
         
         // Warning only — no auto-submit
         if (warningTimeoutRef.current) {
@@ -464,7 +516,7 @@ const WritingTest = () => {
         clearTimeout(cooldownTimer);
       }
     };
-  }, [testStarted, isSubmitted]);
+  }, [testStarted, isSubmitted, reportViolation]);
 
   // Auto-submit function
   const handleAutoSubmit = async (reason) => {
@@ -491,6 +543,8 @@ const WritingTest = () => {
         console.error('Auto-submit API error:', e);
       }
     }
+
+    await finishMonitoring();
 
     // A violation occurred if reason mentions a repeated count or fullscreen/tab/mouse rule
     const isCheating = /times|suspicious|edges|focus lost|switched|fullscreen/i.test(reason)
@@ -545,6 +599,8 @@ const WritingTest = () => {
         console.error('Submit error:', e);
       }
     }
+
+    await finishMonitoring();
 
     setShowSuccessModal(true);
     setTimeout(() => {
@@ -632,9 +688,9 @@ const WritingTest = () => {
             {/* ── Right panel (white) ── */}
             <div className="md:w-7/12 flex flex-col justify-center px-10 py-10">
               <h3 className="text-2xl font-bold mb-1" style={{ color: '#1a3460' }}>Enter your details</h3>
-              <p className="text-sm text-gray-400 mb-8">Your information must match your registration records.</p>
+              <p className="text-sm text-gray-400 mb-6">Your information must match your registration records.</p>
 
-              <div className="space-y-5 mb-6">
+              <div className="space-y-4 mb-5">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Full name</label>
                   <input
@@ -665,6 +721,21 @@ const WritingTest = () => {
                 </div>
               </div>
 
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3.5 mb-5">
+                <div className="flex items-center gap-2 mb-2.5">
+                  <svg className="w-4 h-4 text-amber-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 4.5h.008v.008H12V16.5z" />
+                  </svg>
+                  <p className="text-sm font-bold text-amber-900">Writing exam rules</p>
+                </div>
+                <ul className="space-y-1.5 text-xs leading-relaxed text-amber-900">
+                  <li className="flex gap-2"><span className="font-bold">•</span><span>Copy, cut, paste, and using text from external sources are not allowed.</span></li>
+                  <li className="flex gap-2"><span className="font-bold">•</span><span>Do not switch tabs or windows, and do not leave fullscreen.</span></li>
+                  <li className="flex gap-2"><span className="font-bold">•</span><span>Camera, microphone, and Entire Screen sharing must remain enabled.</span></li>
+                  <li className="flex gap-2"><span className="font-bold">•</span><span>Rule violations are recorded with screenshots and short screen videos.</span></li>
+                </ul>
+              </div>
+
               {startError && (
                 <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3 mb-5 flex items-start gap-2.5">
                   <svg className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
@@ -693,13 +764,13 @@ const WritingTest = () => {
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
                     </svg>
-                    Checking...
+                    Preparing monitoring...
                   </>
                 ) : 'Begin writing'}
               </button>
 
               <p className="text-center text-xs text-gray-400 mt-3">
-                Once you begin, the 60-minute timer starts and cannot be paused.
+                Share your entire screen and allow camera access. The 60-minute timer cannot be paused.
               </p>
             </div>
 

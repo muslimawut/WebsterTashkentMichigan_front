@@ -127,21 +127,19 @@ const PasteWarning = ({ count, onClose }) => {
         </svg>
         <div className="flex-1">
           <p className="font-bold text-sm mb-0.5">
-            {isFinal ? '🚫 Essay Automatically Closed — 3rd Violation' : `⚠️ Warning ${count} / ${MAX_PASTE} — Copy-Paste Detected`}
+            {isFinal ? '🚫 Copy-Paste Limit Reached' : `⚠️ Warning ${count} / ${MAX_PASTE} — Copy-Paste Detected`}
           </p>
           <p className="text-xs opacity-90">
             {isFinal
-              ? 'You violated the copy-paste rule 3 times. Your essay has been closed.'
-              : `Copy-paste is not allowed. ${MAX_PASTE - count} warning(s) left before auto-close.`}
+              ? 'You have reached the copy-paste limit. Please write the essay yourself.'
+              : `Copy-paste is not allowed. ${MAX_PASTE - count} warning(s) left.`}
           </p>
         </div>
-        {!isFinal && (
-          <button onClick={onClose} className="opacity-70 hover:opacity-100 transition-opacity">
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"/>
-            </svg>
-          </button>
-        )}
+        <button onClick={onClose} className="opacity-70 hover:opacity-100 transition-opacity">
+          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"/>
+          </svg>
+        </button>
       </div>
     </div>
   );
@@ -154,7 +152,6 @@ const ExamScreen = ({ user, onSubmit }) => {
   const [totalTime, setTotalTime]       = useState(0);
   const [pasteCount, setPasteCount]     = useState(0);
   const [showWarning, setShowWarning]   = useState(false);
-  const [autoClosing, setAutoClosing]   = useState(false);
   const [showSubmit, setShowSubmit]     = useState(false);
 
   const textareaRef   = useRef(null);
@@ -169,11 +166,17 @@ const ExamScreen = ({ user, onSubmit }) => {
   /* timers */
   useEffect(() => {
     timerRef.current = setInterval(() => {
-      setTimeLeft(p => { if (p <= 1) { doSubmit('Time expired'); return 0; } return p - 1; });
+      setTimeLeft(p => (p <= 1 ? 0 : p - 1));
     }, 1000);
     totalRef.current = setInterval(() => setTotalTime(p => p + 1), 1000);
     return () => { clearInterval(timerRef.current); clearInterval(totalRef.current); };
   }, []);
+
+  /* auto-submit when time runs out — runs on the render where timeLeft hits 0,
+     so doSubmit reads the CURRENT essay/words/totalTime (not stale first-render values) */
+  useEffect(() => {
+    if (timeLeft === 0) doSubmit('Time expired');
+  }, [timeLeft]);
 
   /* block copy / cut / contextmenu */
   useEffect(() => {
@@ -194,12 +197,6 @@ const ExamScreen = ({ user, onSubmit }) => {
     const n = pasteCountRef.current;
     setPasteCount(n);
     setShowWarning(true);
-    if (n >= MAX_PASTE) {
-      setAutoClosing(true);
-      clearInterval(timerRef.current);
-      clearInterval(totalRef.current);
-      setTimeout(() => doSubmit('Auto-closed: copy-paste limit exceeded'), 2500);
-    }
   }, []);
 
   /* keyboard shortcut block */
@@ -223,20 +220,6 @@ const ExamScreen = ({ user, onSubmit }) => {
     clearInterval(totalRef.current);
     onSubmit({ essay, words, totalTime, reason });
   };
-
-  if (autoClosing) return (
-    <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#f8f9fa' }}>
-      <div className="bg-white rounded-2xl shadow-xl p-10 max-w-sm text-center">
-        <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <svg className="w-8 h-8 text-red-600" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd"/>
-          </svg>
-        </div>
-        <h3 className="text-xl font-bold text-gray-900 mb-2">Essay Automatically Closed</h3>
-        <p className="text-gray-500 text-sm">Copy-paste violated 3 times. Redirecting...</p>
-      </div>
-    </div>
-  );
 
   return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#f8f9fa' }}>

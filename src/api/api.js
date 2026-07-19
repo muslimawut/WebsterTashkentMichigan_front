@@ -4,6 +4,35 @@ import 'react-toastify/dist/ReactToastify.css';
 import { reportErrorToTelegram } from '../utils/telegram';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+// Proctoring backend URL ataylab manual: .env qiymatiga bog'liq emas.
+const PROCTORING_API_BASE_URL = 'https://mept.webster.uz/api/v1';
+
+// Proctoring backend guide bo'yicha public va asosiy /api/v1 servisidan alohida.
+// fetch helper JSON/text response hamda DRF validation xatolarini saqlab beradi.
+const proctoringRequest = async (path, options = {}) => {
+  const { requireAuth = false, ...requestOptions } = options;
+  const headers = new Headers(requestOptions.headers || {});
+  if (requireAuth) {
+    const token = localStorage.getItem('authToken');
+    if (token) headers.set('Authorization', `Bearer ${token}`);
+  }
+  const response = await fetch(`${PROCTORING_API_BASE_URL}${path}`, {
+    ...requestOptions,
+    headers,
+  });
+  const contentType = response.headers.get('content-type') || '';
+  const data = contentType.includes('application/json')
+    ? await response.json()
+    : await response.text();
+
+  if (!response.ok) {
+    const error = new Error(`Proctoring API request failed (${response.status})`);
+    error.status = response.status;
+    error.data = data;
+    throw error;
+  }
+  return data;
+};
 
 const getCsrfToken = () => {
   const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]*)/);
@@ -111,14 +140,18 @@ axiosInstance.interceptors.response.use(
       errorMessage = error.message;
     }
 
+    // Ba'zi so'rovlar (masalan proctoring — backend ixtiyoriy) xatoni jimgina
+    // o'tkazadi: toast ham, Telegram ham yo'q.
+    const silent = error.config?.skipErrorToast;
+
     // 🔹 Show toast directly from API layer
-    showApiError(errorMessage);
+    if (!silent) showApiError(errorMessage);
 
     // 🔹 Adminlarga monitoring uchun Telegramga yuboramiz
     const status = error.response?.status;
     // 401 (oddiy login xatosi) va 0 (network) larni ham yuboramiz, faqat
     // foydalanuvchi tomonidan bekor qilingan so'rovlarni o'tkazib yuboramiz
-    if (error.code !== 'ERR_CANCELED') {
+    if (!silent && error.code !== 'ERR_CANCELED') {
       let rawDetails = error.response?.data;
       if (rawDetails && typeof rawDetails === 'object') {
         rawDetails = JSON.stringify(rawDetails, null, 2);
@@ -277,6 +310,101 @@ class ApiService {
 
   async writingGetSession(sessionId) {
     return axiosInstance.get(`/writing/session/${sessionId}`, { skipAuth: true });
+  }
+
+  // ── Proctoring (Cambridge Metrica imtihoni nazorati) ─────
+  // Kamera tekshiruvidan o'tgach sessiya ochamiz — backend session_id qaytaradi.
+  async proctorStartSession({ fullName, passportId, examUrl }) {
+    return proctoringRequest('/proctoring/sessions/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        full_name: fullName,
+        passport_id: passportId,
+        exam_url: examUrl,
+      }),
+    });
+  }
+
+  // Tab almashish / fullscreen chiqish / kamera uzilishi kabi hodisalarni log qilamiz.
+  // eventId — cheating hodisasi id'si; skreenshot/klip shu id bilan bog'lanadi.
+  async proctorLogEvent(sessionId, { type, message, severity, eventId, clientTime }) {
+    return proctoringRequest(`/proctoring/sessions/${encodeURIComponent(sessionId)}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        event_id: eventId || undefined,
+        type,
+        message,
+        severity,
+        client_time: clientTime || new Date().toISOString(),
+      }),
+    });
+  }
+
+  // Qo'l ko'tarilganda (yoki boshqa hodisada) olingan skrinshotni yuboramiz.
+  async proctorUploadScreenshot(sessionId, { image, reason, eventId, clientTime }) {
+    return proctoringRequest(`/proctoring/sessions/${encodeURIComponent(sessionId)}/screenshot`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        event_id: eventId || undefined,
+        image,
+        reason,
+        client_time: clientTime || new Date().toISOString(),
+      }),
+    });
+  }
+
+  // Shubhali lahzada olingan qisqa ekran video-klipini yuboramiz.
+  async proctorUploadClip(sessionId, { blob, reason, eventId, clientTime }) {
+    const fd = new FormData();
+    fd.append('clip', blob, 'proctoring.webm');
+    fd.append('reason', reason || '');
+    if (eventId) fd.append('event_id', eventId);
+    fd.append('client_time', clientTime || new Date().toISOString());
+    // Content-Type qo'lda berilmaydi — multipart boundary'ni browser qo'shadi.
+    return proctoringRequest(`/proctoring/sessions/${encodeURIComponent(sessionId)}/clip`, {
+      method: 'POST',
+      body: fd,
+    });
+  }
+
+  // ── Proctor monitoring (admin ko'rinishi) ───────────────
+  // Barcha sessiyalar ro'yxati
+  async proctorListSessions() {
+    return proctoringRequest('/proctoring/sessions', { requireAuth: true });
+  }
+
+  // Bitta sessiya — status + hodisalar (loglar) + skrinshotlar
+  async proctorGetSession(sessionId) {
+    return proctoringRequest(`/proctoring/sessions/${encodeURIComponent(sessionId)}`, { requireAuth: true });
+  }
+
+  // AI tab/screen tekshiruvi natijasini sessiyaga idempotent saqlaymiz.
+  async proctorSaveCheatingEvents(sessionId, payload) {
+    return proctoringRequest(`/proctoring/sessions/${encodeURIComponent(sessionId)}/cheating/events`, {
+      method: 'POST',
+      requireAuth: true,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  // Admin monitor refresh qilinganda avval saqlangan AI natijasini qayta olamiz.
+  async proctorGetCheatingEvents(sessionId) {
+    return proctoringRequest(`/proctoring/sessions/${encodeURIComponent(sessionId)}/cheating/events`, {
+      requireAuth: true,
+    });
+  }
+
+  // Imtihon tugagach sessiyani yopamiz.
+  async proctorFinishSession(sessionId, { warnings } = {}) {
+    return proctoringRequest(`/proctoring/sessions/${encodeURIComponent(sessionId)}/finish`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ warnings: Math.max(0, Number(warnings) || 0) }),
+    });
   }
 }
 

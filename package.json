@@ -4,6 +4,7 @@
   "private": true,
   "description": "Webster University Michigan Test Center Landing Page",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.112.3",
     "@google/genai": "^1.39.0",
     "axios": "^1.13.2",
     "dotenv": "^17.2.3",
