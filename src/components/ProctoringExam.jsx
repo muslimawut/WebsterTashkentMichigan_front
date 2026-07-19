@@ -105,6 +105,55 @@ const makeEventId = (type) => {
   return `client_${safeType}_${Date.now()}_${random}`;
 };
 
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// `MediaStreamTrack.readyState === "live"` faqat permission/track ochilganini
+// bildiradi; real kamera kadri kelayotganini bildirmaydi. Canvas orqali haqiqiy
+// decoded frame va qora bo'lmagan tasvirni tekshiramiz.
+const cameraFrameIsVisible = (video) => {
+  if (!video || video.readyState < 2 || !video.videoWidth || !video.videoHeight) return false;
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = 96;
+    canvas.height = 54;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) return false;
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    let luminanceTotal = 0;
+    let visiblePixels = 0;
+    const pixelCount = pixels.length / 4;
+    for (let offset = 0; offset < pixels.length; offset += 4) {
+      const luminance = pixels[offset] * 0.2126 + pixels[offset + 1] * 0.7152 + pixels[offset + 2] * 0.0722;
+      luminanceTotal += luminance;
+      if (luminance > 12) visiblePixels += 1;
+    }
+    const averageLuminance = luminanceTotal / pixelCount;
+    const visibleRatio = visiblePixels / pixelCount;
+    return averageLuminance >= 8 || visibleRatio >= 0.02;
+  } catch {
+    return false;
+  }
+};
+
+const verifyCameraFeed = async (video, timeoutMs = 9000) => {
+  if (!video) return false;
+  try { await video.play(); } catch { /* readiness loop below gives the real result */ }
+  const deadline = Date.now() + timeoutMs;
+  let visibleSamples = 0;
+  while (Date.now() < deadline) {
+    if (cameraFrameIsVisible(video)) {
+      visibleSamples += 1;
+      // Ikki alohida sample: startupdagi bitta eski/placeholder frame yetarli emas.
+      if (visibleSamples >= 2) return true;
+    } else {
+      visibleSamples = 0;
+    }
+    await wait(300);
+  }
+  return false;
+};
+
 // phase: 'idle' | 'checking' | 'ready' | 'active' | 'finished'
 
 const ProctoringExam = () => {
@@ -136,6 +185,8 @@ const ProctoringExam = () => {
   const [examOpened, setExamOpened] = useState(false);
   const [examBlocked, setExamBlocked] = useState(false);
   const [frameTick, setFrameTick] = useState(0); // davriy kadr yig'ilganda saqlashni trigger qiladi
+  const [rulesConfirmed, setRulesConfirmed] = useState(false);
+  const [rulesAccepted, setRulesAccepted] = useState(false);
 
   const videoRef = useRef(null);
   const streamRef = useRef(null);
@@ -752,10 +803,25 @@ const ProctoringExam = () => {
   const checkDevices = useCallback(async () => {
     setPermissionError('');
     setPhase('checking');
+    let stream = null;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      // Oldingi muvaffaqiyatsiz urinishdan qolgan tracklar LED'ni bekorga yoqib
+      // turmasin va keyingi retry kamerani qayta ochsin.
+      streamRef.current?.getTracks?.().forEach((track) => track.stop());
+      streamRef.current = null;
+      if (videoRef.current) videoRef.current.srcObject = null;
+      stopAudioMeter();
+      setCameraOn(false);
+      setMicOn(false);
+
+      stream = await navigator.mediaDevices.getUserMedia({
         // 720p — AI detection uchun yengil va yetarli (PIP kichik). 1080p thread'ni bo'g'adi.
-        video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 24 } },
+        video: {
+          facingMode: { ideal: 'user' },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 24 },
+        },
         audio: true,
       });
       streamRef.current = stream;
@@ -773,7 +839,19 @@ const ProctoringExam = () => {
         return;
       }
 
-      if (videoRef.current) videoRef.current.srcObject = stream;
+      if (!videoRef.current) {
+        const error = new Error('Camera preview is not ready.');
+        error.code = 'CAMERA_NO_FRAMES';
+        throw error;
+      }
+      videoRef.current.srcObject = stream;
+      const feedVisible = await verifyCameraFeed(videoRef.current);
+      if (!feedVisible) {
+        const error = new Error('Camera is enabled but no visible image was received.');
+        error.code = 'CAMERA_NO_FRAMES';
+        throw error;
+      }
+
       attachTrackWatchers(stream);
 
       setCameraOn(true);
@@ -783,18 +861,25 @@ const ProctoringExam = () => {
       setPhase('ready');
     } catch (err) {
       let msg = 'Camera/microphone access denied.';
-      if (err && (err.name === 'NotAllowedError' || err.name === 'SecurityError')) {
+      if (err?.code === 'CAMERA_NO_FRAMES') {
+        msg = 'Camera permission was granted, but no visible image was received. Close Zoom, Telegram, FaceTime or other camera apps; remove the camera cover; increase the room light; check the selected camera in browser settings; then try again.';
+      } else if (err && (err.name === 'NotAllowedError' || err.name === 'SecurityError')) {
         msg = 'Camera and microphone access was denied. Allow it in your browser settings.';
       } else if (err && err.name === 'NotFoundError') {
         msg = 'Camera or microphone not found. Check that your device is connected.';
       } else if (err && err.name === 'NotReadableError') {
         msg = 'Camera is in use by another app. Close other applications.';
       }
+      stream?.getTracks?.().forEach((track) => track.stop());
+      if (streamRef.current === stream) streamRef.current = null;
+      if (videoRef.current?.srcObject === stream) videoRef.current.srcObject = null;
+      stopAudioMeter();
       setPermissionError(msg);
       setCameraOn(false);
+      setMicOn(false);
       setPhase('idle');
     }
-  }, [attachTrackWatchers, startAudioMeter]);
+  }, [attachTrackWatchers, startAudioMeter, stopAudioMeter]);
 
   /* ── Ekran ulashish (faqat butun ekran) ─────────────────── */
   const stopScreenShare = useCallback(() => {
@@ -865,6 +950,22 @@ const ProctoringExam = () => {
   const startExam = useCallback(async () => {
     if (!cameraOn) return;
 
+    // Enable'dan keyin kamera qora/stalled bo'lib qolgan bo'lsa session va
+    // screen-share'ni boshlamaymiz. Student kamerani qayta ulashi kerak.
+    // Sinxron tekshiruv: getDisplayMedia uchun click user-gesture saqlanib qoladi.
+    const feedStillVisible = cameraFrameIsVisible(videoRef.current);
+    if (!feedStillVisible) {
+      streamRef.current?.getTracks?.().forEach((track) => track.stop());
+      streamRef.current = null;
+      if (videoRef.current) videoRef.current.srcObject = null;
+      stopAudioMeter();
+      setCameraOn(false);
+      setMicOn(false);
+      setPhase('idle');
+      setPermissionError('The camera stopped producing a visible image. Close other camera apps, check the camera cover and room lighting, then enable the camera again.');
+      return;
+    }
+
     // Butun ekranni ulashtiramiz (bu getDisplayMedia — click gesture'ni talab qiladi).
     // window.open ni shu yerda chaqirmaymiz: bitta bosishda ikkala gesture ishlamaydi,
     // shuning uchun Metrica tabi active ekrandagi alohida tugma bilan ochiladi.
@@ -896,7 +997,7 @@ const ProctoringExam = () => {
 
     // Boshlanishida bitta snapshot (jim).
     setTimeout(() => captureSnapshot('Session start', { silent: true }), 1200);
-  }, [cameraOn, fullName, passportId, logEvent, startScreenShare, stopScreenShare, captureSnapshot]);
+  }, [cameraOn, fullName, passportId, logEvent, startScreenShare, stopScreenShare, captureSnapshot, stopAudioMeter]);
 
   /* ── Fon monitoring (tab / fullscreen / kamera) ─────────── */
   useEffect(() => {
@@ -1265,6 +1366,161 @@ const ProctoringExam = () => {
     phase === 'active' ? 'In progress' :
     phase === 'finished' ? 'Completed' :
     phase === 'ready' ? 'Ready' : 'Not started';
+
+  // Kamera/mikrofon permissioni faqat student qoidalarni o'qib tasdiqlagandan
+  // keyin so'raladi. Refresh yoki yangi kirishda qoidalar yana ko'rsatiladi.
+  if (!rulesAccepted) {
+    return (
+      <div className="px-root px-rules-root">
+        <style>{CSS}</style>
+        <div className="px-bg" aria-hidden>
+          <span className="px-blob px-blob-1" />
+          <span className="px-blob px-blob-2" />
+          <span className="px-grid" />
+        </div>
+
+        <header className="px-header px-rules-header">
+          <button className="px-back" onClick={() => navigate('/')}>
+            <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+            <span>Back</span>
+          </button>
+          <div className="px-brand">
+            <img className="px-brand-logo" src={websterLogo} alt="Webster" />
+            <div className="px-brand-text">
+              <span className="px-brand-name">Webster · MEPT</span>
+              <span className="px-brand-sub">Exam rules and monitoring consent</span>
+            </div>
+          </div>
+          <span className="px-rules-step">Step 1 of 3</span>
+        </header>
+
+        <main className="px-rules-page">
+          <section className="px-rules-card" aria-labelledby="exam-rules-title">
+            <div className="px-rules-intro">
+              <span className="px-rules-lock" aria-hidden>
+                <svg width="28" height="28" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 00-9 0v3.75m-.75 10.5h10.5A2.25 2.25 0 0019.5 18.75v-6A2.25 2.25 0 0017.25 10.5H6.75A2.25 2.25 0 004.5 12.75v6A2.25 2.25 0 006.75 21z" />
+                </svg>
+              </span>
+              <div>
+                <p className="px-rules-kicker">Read before enabling your camera</p>
+                <h1 id="exam-rules-title">Important exam rules</h1>
+                <p>Your camera, microphone and screen sharing will start only after you accept these rules.</p>
+              </div>
+            </div>
+
+            <div className="px-rules-list">
+              <article className="px-rule-item is-danger">
+                <span className="px-rule-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" focusable="false">
+                    <rect x="8" y="8" width="11" height="11" rx="2" />
+                    <path d="M6 16H5a2 2 0 01-2-2V5a2 2 0 012-2h9a2 2 0 012 2v1" />
+                    <path className="px-rule-icon-slash" d="M4 4l16 16" />
+                  </svg>
+                </span>
+                <div>
+                  <h2>Do not copy or use outside help</h2>
+                  <p>Copying, pasting, taking photos, using notes, a phone, another device, search engines, AI tools, messengers or help from another person is prohibited.</p>
+                </div>
+              </article>
+
+              <article className="px-rule-item">
+                <span className="px-rule-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" focusable="false">
+                    <rect x="3" y="4" width="18" height="13" rx="2" />
+                    <path d="M8 21h8M12 17v4M6 8V7h2M16 7h2v1M6 13v1h2M16 14h2v-1" />
+                  </svg>
+                </span>
+                <div>
+                  <h2>Keep your entire screen shared</h2>
+                  <p>Select <b>Entire Screen</b>, not a tab or window. Do not stop, hide, pause or change screen sharing until the test is completed.</p>
+                </div>
+              </article>
+
+              <article className="px-rule-item">
+                <span className="px-rule-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" focusable="false">
+                    <rect x="3" y="4" width="18" height="16" rx="2" />
+                    <path d="M3 8h18M7 6h.01M10 6h.01M9 12l6 6M15 12l-6 6" />
+                  </svg>
+                </span>
+                <div>
+                  <h2>Stay on the authorized exam page</h2>
+                  <p>Do not open or switch to another tab, application, window, website or desktop. Use only the Metrica exam page provided by the test.</p>
+                </div>
+              </article>
+
+              <article className="px-rule-item">
+                <span className="px-rule-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" focusable="false">
+                    <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z" />
+                    <circle cx="12" cy="12" r="2.75" />
+                    <path className="px-rule-icon-pupil" d="M12 10.6v2.8" />
+                  </svg>
+                </span>
+                <div>
+                  <h2>Face the screen and remain visible</h2>
+                  <p>Keep your face clearly visible and look at the screen. Repeated or sustained looking away, hiding your face, leaving the camera, or another person appearing may be flagged.</p>
+                </div>
+              </article>
+
+              <article className="px-rule-item">
+                <span className="px-rule-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" focusable="false">
+                    <path d="M12 2.75l7 2.7v5.4c0 4.45-2.8 8.48-7 10.4-4.2-1.92-7-5.95-7-10.4v-5.4l7-2.7z" />
+                    <path className="px-rule-icon-check" d="M8.7 12l2.15 2.15 4.55-4.55" />
+                  </svg>
+                </span>
+                <div>
+                  <h2>Do not disable monitoring</h2>
+                  <p>Your camera and microphone must remain on. Disconnecting the camera, microphone or screen sharing is recorded as a violation.</p>
+                </div>
+              </article>
+            </div>
+
+            <div className="px-rules-warning" role="note">
+              <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9.303 3.376c.866 1.5-.217 3.374-1.949 3.374H4.646c-1.732 0-2.815-1.874-1.949-3.374L10.05 3.374c.866-1.5 3.034-1.5 3.9 0l7.353 12.752zM12 15.75h.008v.008H12v-.008z" />
+              </svg>
+              <div>
+                <strong>Important consequence</strong>
+                <p>The system records screenshots, video evidence, tab changes and monitoring interruptions. If copying or unauthorized assistance is detected or reasonably suspected, your session may be marked as <b>cheating</b>, sent for review, and your test results may be <b>invalidated</b>.</p>
+              </div>
+            </div>
+
+            <label className={`px-rules-consent ${rulesConfirmed ? 'is-checked' : ''}`}>
+              <input
+                type="checkbox"
+                checked={rulesConfirmed}
+                onChange={(event) => setRulesConfirmed(event.target.checked)}
+              />
+              <span className="px-rules-checkbox" aria-hidden>
+                {rulesConfirmed && (
+                  <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </span>
+              <span>I have read and understood all rules. I agree to follow them and consent to proctoring during the exam.</span>
+            </label>
+
+            <button
+              type="button"
+              className="px-btn px-btn-primary px-rules-continue"
+              disabled={!rulesConfirmed}
+              onClick={() => setRulesAccepted(true)}
+            >
+              <span className="px-btn-glow" />
+              I understand — Continue to camera setup
+            </button>
+            <p className="px-rules-footnote">Next: enter your details, enable camera and microphone, then share your entire screen.</p>
+          </section>
+        </main>
+      </div>
+    );
+  }
 
   /* ── UI ─────────────────────────────────────────────────── */
   return (
@@ -1636,6 +1892,46 @@ const CSS = `
              radial-gradient(1000px 700px at 110% 10%,#0a2547 0%,transparent 50%),
              linear-gradient(160deg,#060d1a 0%,#081428 45%,#060e1d 100%);
   font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;}
+.px-rules-root{position:relative;overflow-x:hidden;}
+.px-rules-header{position:relative;z-index:2;}
+.px-rules-step{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#7dd3fc;background:rgba(56,189,248,.1);border:1px solid rgba(56,189,248,.25);border-radius:999px;padding:6px 10px;white-space:nowrap;}
+.px-rules-page{position:relative;z-index:1;width:min(920px,calc(100% - 32px));margin:0 auto;padding:38px 0 70px;}
+.px-rules-card{background:linear-gradient(180deg,rgba(16,31,55,.96),rgba(7,18,36,.96));border:1px solid rgba(148,180,221,.18);border-radius:24px;padding:30px;box-shadow:0 34px 90px -45px rgba(0,0,0,.9),0 0 50px -35px rgba(56,189,248,.45);}
+.px-rules-intro{display:flex;align-items:flex-start;gap:17px;padding-bottom:24px;border-bottom:1px solid rgba(255,255,255,.09);}
+.px-rules-lock{width:54px;height:54px;display:grid;place-items:center;flex-shrink:0;border-radius:16px;color:#7dd3fc;background:linear-gradient(135deg,rgba(14,165,233,.2),rgba(37,99,235,.12));border:1px solid rgba(125,211,252,.3);}
+.px-rules-kicker{margin:0 0 5px;color:#7dd3fc;font-size:10px;font-weight:900;letter-spacing:.16em;text-transform:uppercase;}
+.px-rules-intro h1{margin:0;color:#fff;font-size:clamp(24px,4vw,34px);line-height:1.12;letter-spacing:-.025em;}
+.px-rules-intro p:last-child{margin:8px 0 0;color:#9fb3cf;font-size:14px;line-height:1.5;}
+.px-rules-list{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:22px 0;}
+.px-rule-item{display:flex;align-items:flex-start;gap:12px;padding:16px;border:1px solid rgba(255,255,255,.09);border-radius:15px;background:rgba(255,255,255,.035);}
+.px-rule-item:last-child{grid-column:1/-1;}
+.px-rule-item.is-danger{border-color:rgba(248,113,113,.25);background:rgba(239,68,68,.065);}
+.px-rule-icon{width:36px;height:36px;display:grid;place-items:center;flex-shrink:0;border-radius:11px;color:#93c5fd;background:linear-gradient(145deg,rgba(59,130,246,.18),rgba(14,165,233,.08));border:1px solid rgba(96,165,250,.28);box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 8px 18px -12px rgba(56,189,248,.8);transition:transform .28s cubic-bezier(.16,1,.3,1),filter .28s ease;}
+.px-rule-icon svg{display:block;width:21px;height:21px;overflow:visible;}
+.px-rule-item:hover .px-rule-icon{transform:translateY(-2px) scale(1.06);filter:brightness(1.16);}
+.px-rule-item.is-danger .px-rule-icon{color:#fca5a5;background:linear-gradient(145deg,rgba(239,68,68,.2),rgba(244,63,94,.08));border-color:rgba(248,113,113,.32);box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 8px 18px -12px rgba(248,113,113,.85);}
+.px-rule-icon-slash,.px-rule-icon-check{transition:transform .32s cubic-bezier(.16,1,.3,1);transform-origin:center;}
+.px-rule-item:hover .px-rule-icon-slash,.px-rule-item:hover .px-rule-icon-check{transform:scale(1.12);}
+.px-rule-icon-pupil{transition:transform .3s cubic-bezier(.16,1,.3,1);transform-origin:center;}
+.px-rule-item:hover .px-rule-icon-pupil{transform:translateX(2px);}
+.px-rule-item h2{margin:0 0 5px;color:#edf5ff;font-size:14px;line-height:1.3;}
+.px-rule-item p{margin:0;color:#9fb3cf;font-size:12.5px;line-height:1.55;}
+.px-rule-item b{color:#dbeafe;}
+.px-rules-warning{display:flex;align-items:flex-start;gap:13px;margin:0 0 18px;padding:16px 17px;border:1px solid rgba(251,191,36,.32);border-radius:15px;color:#fde68a;background:rgba(245,158,11,.09);}
+.px-rules-warning svg{flex-shrink:0;margin-top:1px;}
+.px-rules-warning strong{display:block;margin-bottom:4px;color:#fef3c7;font-size:13px;text-transform:uppercase;letter-spacing:.06em;}
+.px-rules-warning p{margin:0;color:#e7d8ae;font-size:13px;line-height:1.55;}
+.px-rules-warning b{color:#fff3c4;}
+.px-rules-consent{display:flex;align-items:flex-start;gap:12px;padding:15px 16px;border:1px solid rgba(255,255,255,.1);border-radius:14px;background:rgba(255,255,255,.035);color:#c6d5e9;font-size:13px;font-weight:650;line-height:1.5;cursor:pointer;transition:.18s ease;}
+.px-rules-consent:hover,.px-rules-consent.is-checked{border-color:rgba(52,211,153,.35);background:rgba(16,185,129,.07);}
+.px-rules-consent input{position:absolute;opacity:0;pointer-events:none;}
+.px-rules-checkbox{width:22px;height:22px;display:grid;place-items:center;flex-shrink:0;margin-top:1px;border:1.5px solid rgba(255,255,255,.25);border-radius:7px;color:#03141e;background:rgba(255,255,255,.04);}
+.px-rules-consent.is-checked .px-rules-checkbox{border-color:#34d399;background:#34d399;}
+.px-rules-continue{width:100%;margin-top:16px;}
+.px-rules-continue:disabled{opacity:.42;cursor:not-allowed;box-shadow:none;filter:saturate(.5);}
+.px-rules-footnote{margin:10px 0 0;text-align:center;color:#7187a6;font-size:11.5px;line-height:1.45;}
+@media(max-width:700px){.px-rules-header{padding:13px 14px}.px-rules-header .px-brand-sub{display:none}.px-rules-step{font-size:9px;padding:5px 8px}.px-rules-page{width:min(100% - 20px,920px);padding:18px 0 36px}.px-rules-card{padding:19px;border-radius:18px}.px-rules-intro{gap:12px}.px-rules-lock{width:44px;height:44px;border-radius:13px}.px-rules-list{grid-template-columns:1fr}.px-rule-item:last-child{grid-column:auto}.px-rule-item{padding:14px}.px-rules-warning{padding:14px}.px-rules-consent{padding:13px}.px-rules-header .px-back span{display:none}}
+@media(prefers-reduced-motion:reduce){.px-rule-icon,.px-rule-icon-slash,.px-rule-icon-check,.px-rule-icon-pupil{transition:none!important}.px-rule-item:hover .px-rule-icon,.px-rule-item:hover .px-rule-icon-slash,.px-rule-item:hover .px-rule-icon-check,.px-rule-item:hover .px-rule-icon-pupil{transform:none}}
 .px-bg{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden;}
 .px-blob{position:absolute;border-radius:50%;filter:blur(80px);opacity:.5;animation:pxFloat 14s ease-in-out infinite;}
 .px-blob-1{width:420px;height:420px;top:-120px;left:-80px;background:radial-gradient(circle,#1e5aa8,transparent 70%);}
