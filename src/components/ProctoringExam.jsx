@@ -4,6 +4,7 @@ import api from '../api/api';
 import { handoffProctorMedia } from '../utils/proctorMediaBridge';
 import websterLogo from '../../logowhitewebster.png';
 import { saveSession as saveLocalSession } from '../utils/proctorStore';
+import { sendSupportReportToTelegram } from '../utils/telegram';
 
 /*
   Proctoring sahifasi.
@@ -23,6 +24,7 @@ const METRICA_EXAM_URL =
 // Backend session payloadidagi exam_url — proctoring frontend manzili.
 // Metrica tabini ochadigan URL bilan aralashtirilmaydi.
 const PROCTORING_APP_URL = 'https://protoring.netlify.app/';
+const MEDIAPIPE_VERSION = '0.10.12';
 
 const SNAPSHOT_INTERVAL_MS = 8000;  // davriy ekran snapshoti (boshqa sahifaga o'tishни tez tutish uchun)
 const SNAPSHOT_MAX_W = 1920;        // snapshot eni (aniqroq — matn o'qiladi)
@@ -154,6 +156,59 @@ const verifyCameraFeed = async (video, timeoutMs = 9000) => {
   return false;
 };
 
+const verifyFacePresence = async (video, timeoutMs = 7000) => {
+  let detector = null;
+  try {
+    const vision = await import(/* @vite-ignore */ `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}`);
+    const resolver = await vision.FilesetResolver.forVisionTasks(
+      `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/wasm`
+    );
+    const createDetector = (delegate) => vision.FaceLandmarker.createFromOptions(resolver, {
+      baseOptions: {
+        modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+        delegate,
+      },
+      runningMode: 'VIDEO',
+      numFaces: 2,
+      outputFacialTransformationMatrixes: false,
+      outputFaceBlendshapes: false,
+    });
+    detector = await createDetector('GPU').catch(() => createDetector('CPU'));
+
+    const deadline = Date.now() + timeoutMs;
+    let singleFaceSamples = 0;
+    let multipleFaceSamples = 0;
+    let lastVideoTime = -1;
+    while (Date.now() < deadline) {
+      if (video?.readyState >= 2 && video.currentTime !== lastVideoTime) {
+        lastVideoTime = video.currentTime;
+        const result = detector.detectForVideo(video, performance.now());
+        const faceCount = result?.faceLandmarks?.length || 0;
+        if (faceCount === 1) {
+          singleFaceSamples += 1;
+          multipleFaceSamples = 0;
+          // Bir martalik false detection emas, ketma-ket uchta frame talab qilinadi.
+          if (singleFaceSamples >= 3) return 'ok';
+        } else if (faceCount > 1) {
+          multipleFaceSamples += 1;
+          singleFaceSamples = 0;
+          if (multipleFaceSamples >= 3) return 'multiple_faces';
+        } else {
+          singleFaceSamples = 0;
+          multipleFaceSamples = 0;
+        }
+      }
+      await wait(180);
+    }
+    return 'no_face';
+  } catch (error) {
+    console.error('Camera face pre-check failed:', error);
+    return 'unavailable';
+  } finally {
+    detector?.close?.();
+  }
+};
+
 // phase: 'idle' | 'checking' | 'ready' | 'active' | 'finished'
 
 const ProctoringExam = () => {
@@ -165,6 +220,7 @@ const ProctoringExam = () => {
   const [cameraOn, setCameraOn] = useState(false);
   const [micOn, setMicOn] = useState(false);
   const [permissionError, setPermissionError] = useState('');
+  const [cameraCheckStatus, setCameraCheckStatus] = useState('');
   const [warnings, setWarnings] = useState(0);
   const [events, setEvents] = useState([]);
   const [sessionId, setSessionId] = useState(null);
@@ -642,13 +698,12 @@ const ProctoringExam = () => {
       multiFaceStartRef.current = 0;
     }
 
-    // Yuz yo'q — ekranga qaramayapti (kalibratsiyadan keyingina cheating sifatida)
+    // Yuz yo'q — kalibratsiya hali tugamagan bo'lsa ham vaqtni hisoblaymiz.
+    // Aks holda student kamera oldidan kalibratsiyagacha chiqib ketsa warning bo'lmasdi.
     if (faces.length === 0) {
-      if (baselineRef.current.ready) {
-        setGazeAway(true);
-        if (awayActiveRef.current) evalGaze(false, nowT0);
-        evalNoFace(true, nowT0);
-      }
+      setGazeAway(true);
+      if (awayActiveRef.current) evalGaze(false, nowT0);
+      evalNoFace(true, nowT0);
       return;
     }
     evalNoFace(false, nowT0);
@@ -802,6 +857,7 @@ const ProctoringExam = () => {
   /* ── Kamera + mikrofon ruxsatini so'rash va tekshirish ──── */
   const checkDevices = useCallback(async () => {
     setPermissionError('');
+    setCameraCheckStatus('Requesting camera access…');
     setPhase('checking');
     let stream = null;
     try {
@@ -825,6 +881,7 @@ const ProctoringExam = () => {
         audio: true,
       });
       streamRef.current = stream;
+      setCameraCheckStatus('Checking camera image…');
 
       const videoTrack = stream.getVideoTracks()[0];
       const audioTrack = stream.getAudioTracks()[0];
@@ -852,17 +909,37 @@ const ProctoringExam = () => {
         throw error;
       }
 
+      // Preview'ni ko'rsatamiz, ammo aynan bitta inson yuzi tasdiqlanmaguncha
+      // Ready holatiga o'tmaymiz.
+      setCameraOn(true);
+      setCameraCheckStatus('Looking for your face…');
+      const faceCheck = await verifyFacePresence(videoRef.current);
+      if (faceCheck !== 'ok') {
+        const error = new Error('Face verification failed.');
+        error.code = faceCheck === 'multiple_faces'
+          ? 'MULTIPLE_FACES_SETUP'
+          : (faceCheck === 'unavailable' ? 'FACE_CHECK_UNAVAILABLE' : 'FACE_NOT_DETECTED');
+        throw error;
+      }
+
       attachTrackWatchers(stream);
 
       setCameraOn(true);
       const micActive = !!audioTrack && audioTrack.readyState === 'live';
       setMicOn(micActive);
       if (micActive) startAudioMeter(stream);
+      setCameraCheckStatus('');
       setPhase('ready');
     } catch (err) {
       let msg = 'Camera/microphone access denied.';
       if (err?.code === 'CAMERA_NO_FRAMES') {
         msg = 'Camera permission was granted, but no visible image was received. Close Zoom, Telegram, FaceTime or other camera apps; remove the camera cover; increase the room light; check the selected camera in browser settings; then try again.';
+      } else if (err?.code === 'FACE_NOT_DETECTED') {
+        msg = 'Camera image is working, but your face was not detected. Sit directly in front of the camera, keep your full face visible, improve the lighting, and try again.';
+      } else if (err?.code === 'MULTIPLE_FACES_SETUP') {
+        msg = 'More than one face was detected. Only the test-taker may be visible. Ask everyone else to leave the camera view, then try again.';
+      } else if (err?.code === 'FACE_CHECK_UNAVAILABLE') {
+        msg = 'Face verification could not start. Check your internet connection, reload the page, and try again.';
       } else if (err && (err.name === 'NotAllowedError' || err.name === 'SecurityError')) {
         msg = 'Camera and microphone access was denied. Allow it in your browser settings.';
       } else if (err && err.name === 'NotFoundError') {
@@ -874,6 +951,7 @@ const ProctoringExam = () => {
       if (streamRef.current === stream) streamRef.current = null;
       if (videoRef.current?.srcObject === stream) videoRef.current.srcObject = null;
       stopAudioMeter();
+      setCameraCheckStatus('');
       setPermissionError(msg);
       setCameraOn(false);
       setMicOn(false);
@@ -1210,8 +1288,6 @@ const ProctoringExam = () => {
     let lastDetect = 0;
     let tick = 0;
     const DETECT_INTERVAL = 80; // ms → ~12 fps (60fps o'rniga — thread bo'g'ilmaydi)
-    const MP_VER = '0.10.12';
-
     const createHand = async (vision, resolver, delegate) =>
       vision.HandLandmarker.createFromOptions(resolver, {
         baseOptions: {
@@ -1258,9 +1334,9 @@ const ProctoringExam = () => {
     const setup = async () => {
       setHandStatus('loading');
       try {
-        const vision = await import(/* @vite-ignore */ `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VER}`);
+        const vision = await import(/* @vite-ignore */ `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}`);
         const resolver = await vision.FilesetResolver.forVisionTasks(
-          `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VER}/wasm`
+          `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/wasm`
         );
         // Ikkala modelni PARALLEL yuklaymiz (ketma-ket emas — 2 barobar tez)
         const [handRes, faceRes] = await Promise.allSettled([
@@ -1518,6 +1594,16 @@ const ProctoringExam = () => {
             <p className="px-rules-footnote">Next: enter your details, enable camera and microphone, then share your entire screen.</p>
           </section>
         </main>
+        <SupportHelp
+          fullName={fullName}
+          passportId={passportId}
+          phase="rules"
+          cameraOn={cameraOn}
+          micOn={micOn}
+          screenOn={screenOn}
+          permissionError={permissionError}
+          cameraCheckStatus={cameraCheckStatus}
+        />
       </div>
     );
   }
@@ -1580,6 +1666,16 @@ const ProctoringExam = () => {
 
               <div className="px-video-wrap">
                 <video ref={videoRef} autoPlay playsInline muted className="px-video" />
+
+                {phase === 'checking' && cameraOn && cameraCheckStatus && (
+                  <div className="px-camera-check" role="status" aria-live="polite">
+                    <span className="px-camera-check-spinner" aria-hidden="true" />
+                    <span className="px-camera-check-copy">
+                      <b>{cameraCheckStatus}</b>
+                      <small>Keep one face centered and clearly visible</small>
+                    </span>
+                  </div>
+                )}
 
                 {/* scanner brackets */}
                 <span className="px-bracket tl" /><span className="px-bracket tr" />
@@ -1685,7 +1781,7 @@ const ProctoringExam = () => {
                     disabled={phase === 'checking'}
                   >
                     <span className="px-btn-glow" />
-                    {phase === 'checking' ? 'Checking camera…' : 'Enable camera & microphone'}
+                    {phase === 'checking' ? (cameraCheckStatus || 'Checking camera…') : 'Enable camera & microphone'}
                   </button>
                 )}
                 <p className="px-hint">Camera and microphone must stay on during the exam.</p>
@@ -1779,6 +1875,18 @@ const ProctoringExam = () => {
         </div>
       </main>
 
+      <SupportHelp
+        fullName={fullName}
+        passportId={passportId}
+        sessionId={sessionId}
+        phase={phase}
+        cameraOn={cameraOn}
+        micOn={micOn}
+        screenOn={screenOn}
+        permissionError={permissionError}
+        cameraCheckStatus={cameraCheckStatus}
+      />
+
       {/* Ekran ulashish to'xtaganda — bloklovchi oyna (majburiy) */}
       {phase === 'active' && !screenOn && (
         <div className="px-modal-overlay">
@@ -1861,6 +1969,155 @@ const StatusPill = ({ on, labelOn, labelOff }) => (
     {on ? labelOn : labelOff}
   </span>
 );
+
+const SupportHelp = ({
+  fullName,
+  passportId,
+  sessionId,
+  phase,
+  cameraOn,
+  micOn,
+  screenOn,
+  permissionError,
+  cameraCheckStatus,
+}) => {
+  const [open, setOpen] = useState(false);
+  const [category, setCategory] = useState('Camera problem');
+  const [message, setMessage] = useState('');
+  const [status, setStatus] = useState('idle');
+  const [feedback, setFeedback] = useState('');
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape' && status !== 'sending') setOpen(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [open, status]);
+
+  const openHelp = () => {
+    setStatus('idle');
+    setFeedback('');
+    setOpen(true);
+  };
+
+  const closeHelp = () => {
+    if (status !== 'sending') setOpen(false);
+  };
+
+  const submit = async (event) => {
+    event.preventDefault();
+    const description = message.trim();
+    if (description.length < 5) {
+      setStatus('error');
+      setFeedback('Please describe the problem in a little more detail.');
+      return;
+    }
+    setStatus('sending');
+    setFeedback('');
+    try {
+      await sendSupportReportToTelegram({
+        category,
+        message: description,
+        fullName: fullName?.trim(),
+        passportId: passportId?.trim(),
+        sessionId,
+        phase,
+        cameraOn,
+        micOn,
+        screenOn,
+        permissionError,
+        cameraCheckStatus,
+      });
+      setMessage('');
+      setStatus('sent');
+      setFeedback('Your report was sent to technical support.');
+    } catch (error) {
+      setStatus('error');
+      setFeedback(error?.message || 'The report could not be sent. Check your connection and try again.');
+    }
+  };
+
+  return (
+    <>
+      <button type="button" className="px-support-fab" onClick={openHelp} aria-label="Get technical help">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} aria-hidden>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 22a10 10 0 100-20 10 10 0 000 20z" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9.7 9a2.4 2.4 0 114.18 1.62c-.93.9-1.88 1.35-1.88 2.88M12 17h.01" />
+        </svg>
+        <span>Help</span>
+      </button>
+
+      {open && (
+        <div className="px-support-overlay" onMouseDown={closeHelp}>
+          <form className="px-support-modal" onSubmit={submit} onMouseDown={(event) => event.stopPropagation()}>
+            <div className="px-support-head">
+              <span className="px-support-icon" aria-hidden>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 10.5h7.5m-7.5 3h4.5M21 12a8.25 8.25 0 01-9.79 8.1L6 21l.9-5.21A8.25 8.25 0 1121 12z" />
+                </svg>
+              </span>
+              <div>
+                <span className="px-eyebrow">Telegram support</span>
+                <h2>Report a technical problem</h2>
+              </div>
+              <button type="button" className="px-support-close" onClick={closeHelp} disabled={status === 'sending'} aria-label="Close help form">×</button>
+            </div>
+
+            <p className="px-support-intro">
+              Describe what is not working. Your session and device status will be attached automatically for the developer.
+            </p>
+
+            <label className="px-support-field">
+              <span>Problem type</span>
+              <select value={category} onChange={(event) => setCategory(event.target.value)} disabled={status === 'sending'}>
+                <option>Camera problem</option>
+                <option>Microphone problem</option>
+                <option>Screen sharing problem</option>
+                <option>Exam page problem</option>
+                <option>Login or session problem</option>
+                <option>Other</option>
+              </select>
+            </label>
+
+            <label className="px-support-field">
+              <span>What happened?</span>
+              <textarea
+                value={message}
+                onChange={(event) => setMessage(event.target.value)}
+                placeholder="Example: The camera light is on, but the preview stays black…"
+                maxLength={1200}
+                rows={5}
+                disabled={status === 'sending'}
+                autoFocus
+              />
+              <small>{message.length}/1200</small>
+            </label>
+
+            {feedback && (
+              <div className={`px-support-feedback is-${status}`} role="status" aria-live="polite">
+                {status === 'sent' ? '✓' : status === 'error' ? '!' : ''} {feedback}
+              </div>
+            )}
+
+            <div className="px-support-actions">
+              <button type="button" className="px-btn px-btn-ghost" onClick={closeHelp} disabled={status === 'sending'}>
+                {status === 'sent' ? 'Close' : 'Cancel'}
+              </button>
+              {status !== 'sent' && (
+                <button type="submit" className="px-btn px-btn-primary" disabled={status === 'sending'}>
+                  <span className="px-btn-glow" />
+                  {status === 'sending' ? 'Sending…' : 'Send to support'}
+                </button>
+              )}
+            </div>
+          </form>
+        </div>
+      )}
+    </>
+  );
+};
 
 const ICONS = {
   cam: 'M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25zM15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72',
@@ -1979,6 +2236,11 @@ const CSS = `
 .px-video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);}
 .px-video-empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:#4b6180;}
 .px-video-empty p{font-size:14px;font-weight:600;}
+.px-camera-check{position:absolute;z-index:5;left:50%;bottom:14px;transform:translateX(-50%);display:flex;align-items:center;gap:11px;width:max-content;max-width:calc(100% - 28px);padding:10px 14px;border-radius:13px;color:#eef6ff;background:rgba(5,15,30,.88);border:1px solid rgba(125,211,252,.35);box-shadow:0 10px 30px rgba(0,0,0,.38);backdrop-filter:blur(10px);}
+.px-camera-check-spinner{width:20px;height:20px;flex:0 0 20px;border-radius:50%;border:2px solid rgba(255,255,255,.22);border-top-color:#7dd3fc;animation:pxSpin .8s linear infinite;}
+.px-camera-check-copy{display:flex;flex-direction:column;min-width:0;line-height:1.3;}
+.px-camera-check-copy b{font-size:12.5px;color:#fff;}
+.px-camera-check-copy small{font-size:10.5px;color:#9fb6d5;white-space:normal;}
 .px-bracket{position:absolute;width:30px;height:30px;border:2.5px solid rgba(120,180,255,.55);}
 .px-bracket.tl{top:12px;left:12px;border-right:0;border-bottom:0;border-top-left-radius:8px;}
 .px-bracket.tr{top:12px;right:12px;border-left:0;border-bottom:0;border-top-right-radius:8px;}
@@ -2128,6 +2390,34 @@ const CSS = `
 .px-cal-pct{font-size:13px;font-weight:800;color:#7dd3fc!important;font-variant-numeric:tabular-nums;}
 .px-cal-spinner{width:44px;height:44px;margin:0 auto 16px;border-radius:50%;border:3px solid rgba(255,255,255,.15);border-top-color:#3b82f6;animation:pxSpin .8s linear infinite;}
 @keyframes pxSpin{to{transform:rotate(360deg)}}
+
+/* technical support */
+.px-support-fab{position:fixed;z-index:72;left:22px;bottom:22px;display:inline-flex;align-items:center;gap:8px;padding:11px 16px;border:1px solid rgba(125,211,252,.36);border-radius:999px;color:#eaf7ff;background:linear-gradient(135deg,rgba(14,116,190,.96),rgba(30,64,175,.96));box-shadow:0 14px 38px -14px rgba(14,165,233,.9),0 8px 24px rgba(0,0,0,.34);font:800 13px/1 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;letter-spacing:.02em;cursor:pointer;transition:transform .2s ease,filter .2s ease,box-shadow .2s ease;}
+.px-support-fab:hover{transform:translateY(-2px);filter:brightness(1.1);box-shadow:0 18px 42px -12px rgba(14,165,233,.95),0 10px 26px rgba(0,0,0,.4);}
+.px-support-fab:focus-visible{outline:3px solid rgba(125,211,252,.45);outline-offset:3px;}
+.px-support-overlay{position:fixed;inset:0;z-index:80;display:grid;place-items:center;padding:18px;background:rgba(2,8,18,.78);backdrop-filter:blur(8px);animation:pxFade .18s ease;}
+.px-support-modal{width:min(520px,100%);max-height:calc(100vh - 36px);overflow-y:auto;padding:25px;border:1px solid rgba(148,180,221,.22);border-radius:22px;color:#e8eef7;background:linear-gradient(180deg,#10223d,#08172d);box-shadow:0 36px 90px -24px rgba(0,0,0,.95),0 0 50px -34px rgba(56,189,248,.65);animation:pxRise .25s ease both;}
+.px-support-head{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;}
+.px-support-icon{width:46px;height:46px;display:grid;place-items:center;border-radius:14px;color:#7dd3fc;background:rgba(14,165,233,.13);border:1px solid rgba(125,211,252,.25);}
+.px-support-head h2{margin:3px 0 0;color:#fff;font-size:20px;line-height:1.2;}
+.px-support-close{width:36px;height:36px;display:grid;place-items:center;border:1px solid rgba(255,255,255,.11);border-radius:11px;color:#aebfda;background:rgba(255,255,255,.045);font-size:26px;line-height:1;cursor:pointer;}
+.px-support-close:hover{color:#fff;background:rgba(255,255,255,.1);}
+.px-support-close:disabled{opacity:.45;cursor:not-allowed;}
+.px-support-intro{margin:18px 0;color:#a7bbd7;font-size:13.5px;line-height:1.55;}
+.px-support-field{display:block;margin-top:14px;text-align:left;}
+.px-support-field>span{display:block;margin-bottom:7px;color:#cbdaf0;font-size:12px;font-weight:800;letter-spacing:.04em;}
+.px-support-field select,.px-support-field textarea{width:100%;border:1px solid rgba(148,180,221,.2);border-radius:12px;color:#edf6ff;background:rgba(255,255,255,.055);font:500 14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;outline:none;transition:border-color .18s ease,box-shadow .18s ease,background .18s ease;}
+.px-support-field select{height:44px;padding:0 12px;color-scheme:dark;}
+.px-support-field textarea{display:block;min-height:118px;padding:11px 12px;resize:vertical;}
+.px-support-field select:focus,.px-support-field textarea:focus{border-color:rgba(56,189,248,.75);background:rgba(255,255,255,.075);box-shadow:0 0 0 3px rgba(14,165,233,.12);}
+.px-support-field select:disabled,.px-support-field textarea:disabled{opacity:.6;cursor:not-allowed;}
+.px-support-field small{display:block;margin-top:5px;text-align:right;color:#7088a8;font-size:10.5px;font-variant-numeric:tabular-nums;}
+.px-support-feedback{margin-top:14px;padding:10px 12px;border-radius:11px;font-size:12.5px;font-weight:700;line-height:1.45;}
+.px-support-feedback.is-sent{color:#a7f3d0;background:rgba(16,185,129,.11);border:1px solid rgba(52,211,153,.3);}
+.px-support-feedback.is-error{color:#fecaca;background:rgba(239,68,68,.1);border:1px solid rgba(248,113,113,.28);}
+.px-support-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px;}
+.px-support-actions .px-btn{width:auto;min-width:120px;padding-inline:18px;}
+@media(max-width:560px){.px-support-fab{left:14px;bottom:14px;padding:10px 14px}.px-support-modal{padding:19px;border-radius:18px}.px-support-head{align-items:start}.px-support-icon{width:40px;height:40px}.px-support-head h2{font-size:17px}.px-support-actions{flex-direction:column-reverse}.px-support-actions .px-btn{width:100%}}
 
 /* modal */
 .px-modal-overlay{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:18px;background:rgba(4,9,18,.7);backdrop-filter:blur(6px);animation:pxFade .2s ease;}

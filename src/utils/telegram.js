@@ -3,11 +3,16 @@
 
 const BOT_TOKEN = import.meta.env.VITE_TELEGRAM_BOT_TOKEN;
 const CHAT_ID = import.meta.env.VITE_TELEGRAM_CHAT_ID;
+// Support xabarlari ham umumiy Telegram guruhiga yuboriladi.
+const SUPPORT_CHAT_ID = import.meta.env.VITE_TELEGRAM_CHAT_ID;
 
 // Lokal (localhost / 127.0.0.1) xatolar Telegramga ketmaydi
 const isLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
 
 const isConfigured = Boolean(BOT_TOKEN && CHAT_ID && !isLocalhost);
+const isSupportConfigured = Boolean(
+  import.meta.env.VITE_TELEGRAM_BOT_TOKEN && SUPPORT_CHAT_ID && !isLocalhost
+);
 
 // Bir xil xatolik qayta-qayta yuborilmasligi uchun oddiy throttle (60s)
 const recentlySent = new Map();
@@ -147,6 +152,83 @@ export const reportErrorToTelegram = async ({ message, status, method, url, deta
     // Telegramga yuborish o'zi xato bersa, ilovani buzmaymiz
     console.warn('Telegram error report failed:', e);
   }
+};
+
+/**
+ * Student yuborgan texnik muammoni developerlar Telegram guruhiga yetkazadi.
+ * Bu funksiya xatolik reporteridan alohida: throttle yo'q va natija UI'ga
+ * qaytariladi, shuning uchun student xabari borgan-bormaganini biladi.
+ */
+export const sendSupportReportToTelegram = async ({
+  message,
+  category,
+  fullName,
+  passportId,
+  sessionId,
+  phase,
+  cameraOn,
+  micOn,
+  screenOn,
+  permissionError,
+  cameraCheckStatus,
+} = {}) => {
+  if (!isSupportConfigured) {
+    throw new Error(isLocalhost
+      ? 'Support reports are disabled on localhost.'
+      : 'Telegram support is not configured.');
+  }
+
+  const issue = String(message || '').trim();
+  if (!issue) throw new Error('Please describe the problem.');
+
+  const time = new Date().toLocaleString('uz-UZ', {
+    timeZone: 'Asia/Tashkent',
+    hour12: false,
+  });
+  const connection = navigator.onLine ? 'Online' : 'Offline';
+  const lines = [
+    '🆘 <b>Webster MEPT — Student support request</b>',
+    '',
+    `🏷 <b>Category:</b> ${escapeHtml(category || 'Other')}`,
+    '💬 <b>Problem:</b>',
+    `<pre>${escapeHtml(truncate(issue, 1200))}</pre>`,
+    '',
+    `👤 <b>Student:</b> ${escapeHtml(fullName || 'Not entered')}`,
+    `🪪 <b>Passport:</b> <code>${escapeHtml(passportId || 'Not entered')}</code>`,
+    `🧾 <b>Session:</b> <code>${escapeHtml(sessionId || 'Not started')}</code>`,
+    `📍 <b>Stage:</b> ${escapeHtml(phase || 'unknown')}`,
+    `📷 <b>Camera:</b> ${cameraOn ? 'Connected' : 'Disconnected'}`,
+    `🎤 <b>Microphone:</b> ${micOn ? 'Connected' : 'Disconnected'}`,
+    `🖥 <b>Screen share:</b> ${screenOn ? 'Active' : 'Inactive'}`,
+    `🌐 <b>Connection:</b> ${connection}`,
+  ];
+
+  if (cameraCheckStatus) {
+    lines.push(`🔎 <b>Camera check:</b> ${escapeHtml(truncate(cameraCheckStatus, 300))}`);
+  }
+  if (permissionError) {
+    lines.push(`⚠️ <b>Current error:</b> ${escapeHtml(truncate(permissionError, 600))}`);
+  }
+
+  lines.push(`🕒 <b>Time:</b> ${escapeHtml(time)} (Tashkent)`);
+  lines.push(`🔗 <b>Page:</b> <code>${escapeHtml(`${window.location.pathname}${window.location.search}`)}</code>`);
+  lines.push(`🧭 <b>Browser:</b> ${escapeHtml(truncate(navigator.userAgent, 350))}`);
+
+  const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: SUPPORT_CHAT_ID,
+      text: lines.join('\n'),
+      parse_mode: 'HTML',
+      disable_web_page_preview: true,
+    }),
+  });
+  const result = await response.json().catch(() => null);
+  if (!response.ok || !result?.ok) {
+    throw new Error(result?.description || `Telegram request failed (${response.status}).`);
+  }
+  return true;
 };
 
 export default reportErrorToTelegram;
