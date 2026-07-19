@@ -24,7 +24,6 @@ import WritingTest from './components/WritingTest';
 import WritingExam from './components/WritingExam';
 import ProctoringExam from './components/ProctoringExam';
 import ProctorMonitor from './components/ProctorMonitor';
-import StaffRoute from './components/StaffRoute';
 import Results from './components/ResultsPage';
 import Chatbot from './components/Chatbot';
 
@@ -198,11 +197,7 @@ export default function App() {
           {/* Proctor Monitor (nazoratchi — status + activity log) */}
           <Route
             path="/proctoring/monitor"
-            element={(
-              <StaffRoute>
-                <ProctorMonitor />
-              </StaffRoute>
-            )}
+            element={<ProctorMonitor />}
           />
 
           {/* Results Route */}
