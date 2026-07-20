@@ -26,6 +26,7 @@ import ProctoringExam from './components/ProctoringExam';
 import ProctorMonitor from './components/ProctorMonitor';
 import Results from './components/ResultsPage';
 import Chatbot from './components/Chatbot';
+import AnnouncementBar from './components/AnnouncementBar';
 
 // Home Page Component
 const HomePage = ({ onSignUpClick, isLoggedIn }) => {
@@ -111,6 +112,7 @@ export default function App() {
   return (
     <Router>
       <div className="min-h-screen bg-white">
+        <AnnouncementBar />
         <Routes>
           {/* Home Route */}
           <Route
@@ -197,7 +199,11 @@ export default function App() {
           {/* Proctor Monitor (nazoratchi — status + activity log) */}
           <Route
             path="/proctoring/monitor"
-            element={<ProctorMonitor />}
+            element={(
+              <StaffRoute>
+                <ProctorMonitor />
+              </StaffRoute>
+            )}
           />
 
           {/* Results Route */}

@@ -40,7 +40,7 @@ const Navbar = ({ onSignUpClick, isLoggedIn }) => {
 
   return (
     <>
-      <nav className="absolute top-0 left-0 right-0 z-50 pointer-events-none bg-transparent">
+      <nav className="absolute top-11 left-0 right-0 z-50 pointer-events-none bg-transparent">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pointer-events-auto">
           <div className="flex items-center justify-center h-20 relative">
             {/* Left Navigation - Absolute positioned */}

@@ -21,6 +21,24 @@ code {
   to   { width: 0%; }
 }
 
+/* Announcement marquee */
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+.animate-marquee {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: max-content;
+  white-space: nowrap;
+  animation: marquee 22s linear infinite;
+}
+
+.announcement-bar:hover .animate-marquee {
+  animation-play-state: paused;
+}
+
 /* Modal Animations */
 @keyframes fadeIn {
   from {
