@@ -199,11 +199,7 @@ export default function App() {
           {/* Proctor Monitor (nazoratchi — status + activity log) */}
           <Route
             path="/proctoring/monitor"
-            element={(
-              <StaffRoute>
-                <ProctorMonitor />
-              </StaffRoute>
-            )}
+            element={<ProctorMonitor />}
           />
 
           {/* Results Route */}
