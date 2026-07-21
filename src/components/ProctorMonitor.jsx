@@ -625,10 +625,12 @@ const ProctorMonitor = () => {
     setScreenLoading(true);
     try {
       const gazeFlags = gazeCheatingFlags(events);
+      const sessionKind = getSessionKind(session) || getSessionKind({ events }) || 'metrica';
       const visionReview = await analyzeScreens({
         references: allRefs,
         snapshots: shots,
         meta: { sessionId, student },
+        kind: sessionKind,
       });
       if (visionReview?.error && !gazeFlags.length) {
         setScreenError(visionReview.error);
@@ -682,7 +684,7 @@ const ProctorMonitor = () => {
     } finally {
       setScreenLoading(false);
     }
-  }, [aiAvailable, allRefs, frames, events, sessionId, student]);
+  }, [aiAvailable, allRefs, frames, events, session, sessionId, student]);
 
   const riskColor = { low: '#34d399', medium: '#fbbf24', high: '#f87171' };
 
@@ -691,7 +693,9 @@ const ProctorMonitor = () => {
       <style>{CSS}</style>
 
       <header className="pm-header">
-        <button className="pm-back" onClick={() => navigate('/proctoring/monitor')}>← Back</button>
+        {sessionId
+          ? <button className="pm-back" onClick={() => navigate('/proctoring/monitor')}>← Back</button>
+          : <button className="pm-back" onClick={() => navigate('/')}>← Home</button>}
         <h1>Proctor Monitor</h1>
         <span className="pm-live">
           {!sessionId
@@ -816,7 +820,20 @@ const ProctorMonitor = () => {
 
             {/* Tab check (AI vision) — ruxsat etilgan tab rasmlari bilan solishtirish */}
             <section className="pm-card pm-tabcheck">
-              <p className="pm-eyebrow">Tab check (AI vision)</p>
+              <div className="pm-tabcheck-head">
+                <p className="pm-eyebrow">Tab check (AI vision)</p>
+                {screenReview?.usage?.total > 0 && (
+                  <span
+                    className="pm-token-badge"
+                    title={`Prompt: ${screenReview.usage.prompt.toLocaleString()} · Output: ${screenReview.usage.output.toLocaleString()} tokens`}
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M13 2 L4 14 H11 L11 22 L20 10 H13 Z" />
+                    </svg>
+                    {screenReview.usage.total.toLocaleString()} tokens
+                  </span>
+                )}
+              </div>
               <p className="pm-hint">
                 Allowed pages are loaded from <b>src/assets/proctor-refs/</b> ({bundledRefs.length} built-in). AI flags any student snapshot that shows a different tab/site.
               </p>
@@ -1004,6 +1021,10 @@ const CSS = `
 .pm-picker input:focus{border-color:#2f7ad6;}
 .pm-picker button{background:linear-gradient(135deg,#2f7ad6,#024890);color:#fff;border:0;border-radius:12px;padding:11px 22px;font-weight:800;cursor:pointer;}
 .pm-eyebrow{font-size:11px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;color:#7d95b8;margin-bottom:12px;}
+.pm-tabcheck-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+.pm-tabcheck-head .pm-eyebrow{margin-bottom:12px;}
+.pm-token-badge{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;letter-spacing:.04em;color:#a7f3d0;background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.35);border-radius:999px;padding:4px 10px;margin-bottom:12px;white-space:nowrap;cursor:default;}
+.pm-token-badge svg{width:13px;height:13px;color:#34d399;}
 .pm-list-item{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px 16px;margin-bottom:8px;color:#e8eef7;font-size:14px;font-weight:600;cursor:pointer;}
 .pm-list-item:hover{background:rgba(255,255,255,.08);}
 .pm-list-person{min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-align:left;}

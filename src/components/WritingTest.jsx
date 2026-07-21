@@ -353,8 +353,12 @@ const WritingTest = () => {
     };
 
     const handleWindowBlur = () => {
-      // Ignore if focus moved to another element within the same page (e.g. layout toggle)
-      if (document.activeElement && document.activeElement !== document.body) return;
+      // Faqat HAQIQIY oyna/ilova almashishini hisobga olamiz. Essay yozayotganda
+      // fokus textarea'da bo'ladi — eski `activeElement !== body` sharti shu sabab
+      // Telegram/boshqa ilovaga o'tishни ham "sahifa ichi" deb o'tkazib yuborardi.
+      // Boshqa ilova/oynага o'tilганда document.hasFocus() false bo'ladi; sahifa
+      // ichida fokus ko'chsa (masalan tugma) true bo'lib qoladi va e'tiborsiz qolamiz.
+      if (document.hasFocus()) return;
       if (testStarted && !isSubmitted && !hasSubmittedRef.current && !isWarningActive) {
         isWarningActive = true; // Prevent multiple triggers
 
@@ -731,8 +735,7 @@ const WritingTest = () => {
                 <ul className="space-y-1.5 text-xs leading-relaxed text-amber-900">
                   <li className="flex gap-2"><span className="font-bold">•</span><span>Copy, cut, paste, and using text from external sources are not allowed.</span></li>
                   <li className="flex gap-2"><span className="font-bold">•</span><span>Do not switch tabs or windows, and do not leave fullscreen.</span></li>
-                  <li className="flex gap-2"><span className="font-bold">•</span><span>Camera, microphone, and Entire Screen sharing must remain enabled.</span></li>
-                  <li className="flex gap-2"><span className="font-bold">•</span><span>Rule violations are recorded with screenshots and short screen videos.</span></li>
+                  <li className="flex gap-2"><span className="font-bold">•</span><span>Tab switches, focus loss, and leaving fullscreen are recorded.</span></li>
                 </ul>
               </div>
 
@@ -770,7 +773,7 @@ const WritingTest = () => {
               </button>
 
               <p className="text-center text-xs text-gray-400 mt-3">
-                Share your entire screen and allow camera access. The 60-minute timer cannot be paused.
+                Stay in fullscreen and do not switch tabs. The 60-minute timer cannot be paused.
               </p>
             </div>
 

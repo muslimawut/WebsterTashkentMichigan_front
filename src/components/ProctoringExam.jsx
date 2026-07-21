@@ -26,7 +26,7 @@ const METRICA_EXAM_URL =
 const PROCTORING_APP_URL = 'https://protoring.netlify.app/';
 const MEDIAPIPE_VERSION = '0.10.12';
 
-const SNAPSHOT_INTERVAL_MS = 8000;  // davriy ekran snapshoti (boshqa sahifaga o'tishни tez tutish uchun)
+const SNAPSHOT_INTERVAL_MS = 45000; // davriy (background) ekran snapshoti. Tab almashish/gaze/2-yuz kabi qoida buzilishlarida darhol alohida snapshot olinadi — shuning uchun davriy intervalni katta qildik (hajmni ~5x kamaytiradi).
 const SNAPSHOT_MAX_W = 1920;        // snapshot eni (aniqroq — matn o'qiladi)
 const SNAPSHOT_QUALITY = 0.85;      // JPEG sifati (0-1)
 

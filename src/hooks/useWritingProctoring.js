@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import api from '../api/api';
+import { saveSession as saveLocalSession } from '../utils/proctorStore';
 import {
   cancelProctorMediaRelease,
   scheduleProctorMediaRelease,
@@ -9,7 +10,10 @@ import {
 // Writing sessiyasini monitoring ro'yxatida Metrica sessiyasidan ajratish uchun
 // exam_url sifatida Writing route'ining o'zi yuboriladi.
 const WRITING_APP_URL = 'https://protoring.netlify.app/writing-test';
-const SNAPSHOT_INTERVAL_MS = 8000;
+// Davriy (background) snapshot — kamdan-kam. Qoida buzilganda (tab almashish,
+// blur, fullscreen chiqish, sichqoncha chetga) darhol alohida screenshot olinadi,
+// shuning uchun davriy intervalni katta qilsak ham dalil yo'qolmaydi.
+const SNAPSHOT_INTERVAL_MS = 45000;
 const SEGMENT_MS = 10000;
 const MIN_CLIP_MS = 8000;
 const CLIP_BITRATE = 1500000;
@@ -69,6 +73,52 @@ export const useWritingProctoring = () => {
   const pendingRequestsRef = useRef(new Set());
   const eventMetaRef = useRef(new Map());
 
+  // ── Lokal (IndexedDB) nusxa — ProctorMonitor media'ni shu yerdan o'qiydi.
+  //    Backend eventga skreenshot/klipni biriktirmagan bo'lsa ham, monitor
+  //    lokal nusxadan event_id bo'yicha boyitib ko'rsatadi (Metrica singari).
+  const localEventsRef = useRef(new Map()); // eventId -> { event_id, id, type, message, severity, time, image, clipBlob }
+  const localMetaRef = useRef({ fullName: '', passportId: '' });
+  const persistTimerRef = useRef(null);
+
+  const persistLocal = useCallback(() => {
+    const sid = sessionIdRef.current;
+    if (!sid) return;
+    if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+    persistTimerRef.current = setTimeout(() => {
+      const events = [...localEventsRef.current.values()]
+        .sort((a, b) => new Date(a.time || 0).getTime() - new Date(b.time || 0).getTime());
+      const meta = {
+        session_id: sid,
+        full_name: localMetaRef.current.fullName || '',
+        passport_id: localMetaRef.current.passportId || '',
+        status: activeRef.current ? 'active' : 'finished',
+        warnings: warningsRef.current,
+        exam_url: WRITING_APP_URL,
+        session_type: 'writing',
+      };
+      // Media (rasm/klip) IndexedDB'da — localStorage'ga sig'maydi.
+      saveLocalSession(sid, { meta, events, frames: [] });
+      // Session ro'yxati + badge uchun localStorage'ga faqat matnli nusxa (mediasiz).
+      try {
+        const textEvents = events.map(({ clipBlob, image, ...rest }) => rest);
+        localStorage.setItem(`proctor_session_${sid}`, JSON.stringify({ meta, events: textEvents, updated_at: Date.now() }));
+        const idx = JSON.parse(localStorage.getItem('proctor_session_ids') || '[]');
+        if (!idx.includes(sid)) {
+          idx.push(sid);
+          localStorage.setItem('proctor_session_ids', JSON.stringify(idx));
+        }
+      } catch { /* localStorage to'la/mavjud emas */ }
+    }, 1000);
+  }, []);
+
+  // Lokal event yozuvini yaratamiz/yangilaymiz (event_id bo'yicha).
+  const upsertLocalEvent = useCallback((eventId, patch) => {
+    if (!eventId) return;
+    const prev = localEventsRef.current.get(eventId) || { event_id: eventId, id: eventId };
+    localEventsRef.current.set(eventId, { ...prev, event_id: eventId, id: eventId, ...patch });
+    persistLocal();
+  }, [persistLocal]);
+
   const trackRequest = useCallback((request) => {
     const tracked = Promise.resolve(request).catch(() => null);
     pendingRequestsRef.current.add(tracked);
@@ -92,9 +142,10 @@ export const useWritingProctoring = () => {
         clientTime,
       }));
       eventMetaRef.current.set(eventId, { request, clientTime });
+      upsertLocalEvent(eventId, { type, message, severity, time: clientTime });
     }
     return { eventId, request, clientTime };
-  }, [trackRequest]);
+  }, [trackRequest, upsertLocalEvent]);
 
   const captureSnapshot = useCallback((reason, linkedEventId = null) => {
     const screenVideo = screenVideoRef.current;
@@ -135,6 +186,7 @@ export const useWritingProctoring = () => {
     const sid = sessionIdRef.current;
     if (sid && eventId) {
       const meta = eventMetaRef.current.get(eventId) || eventMeta;
+      upsertLocalEvent(eventId, { image, time: meta?.clientTime });
       trackRequest(Promise.resolve(meta?.request).then(() => api.proctorUploadScreenshot(sid, {
         image,
         reason,
@@ -143,20 +195,21 @@ export const useWritingProctoring = () => {
       })));
     }
     return image;
-  }, [logEvent, trackRequest]);
+  }, [logEvent, trackRequest, upsertLocalEvent]);
 
   const emitClip = useCallback((blob, reason, eventId) => {
     if (!blob?.size || blob.size > 10 * 1024 * 1024) return;
     const sid = sessionIdRef.current;
     const meta = eventMetaRef.current.get(eventId);
     if (!sid) return;
+    upsertLocalEvent(eventId, { clipBlob: blob });
     trackRequest(Promise.resolve(meta?.request).then(() => api.proctorUploadClip(sid, {
       blob,
       reason,
       eventId,
       clientTime: meta?.clientTime,
     })));
-  }, [trackRequest]);
+  }, [trackRequest, upsertLocalEvent]);
 
   const stopRecorder = useCallback(() => {
     recorderStoppingRef.current = true;
@@ -311,47 +364,18 @@ export const useWritingProctoring = () => {
     setMonitoringError('');
     setMonitoringStatus('starting');
 
+    // Kamera, mikrofon VA ekran ulashish Writing'da butunlay o'chirilgan — hech
+    // qanday media so'ralmaydi (permission prompt chiqmaydi). Faqat xatti-harakat
+    // hodisalari (tab almashish, blur, fullscreen chiqish) backendga event bo'lib
+    // yoziladi; screenshot va video-klip olinmaydi.
     const inheritedMedia = takeProctorMedia();
-    const inheritedScreen = inheritedMedia?.screenStream;
-    const inheritedCamera = inheritedMedia?.cameraStream;
-    const screenPromise = inheritedScreen
-      ? Promise.resolve(inheritedScreen)
-      : navigator.mediaDevices.getDisplayMedia({
-        video: { displaySurface: 'monitor', frameRate: { ideal: 12 } },
-        audio: false,
-      });
-    const cameraPromise = inheritedCamera
-      ? Promise.resolve(inheritedCamera)
-      : navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: true,
-      });
-    const [screenResult, cameraResult] = await Promise.allSettled([screenPromise, cameraPromise]);
-    if (screenResult.status !== 'fulfilled' || cameraResult.status !== 'fulfilled') {
-      if (screenResult.status === 'fulfilled') screenResult.value.getTracks().forEach((track) => track.stop());
-      if (cameraResult.status === 'fulfilled') cameraResult.value.getTracks().forEach((track) => track.stop());
-      const message = 'Camera, microphone and entire-screen sharing are required for Writing.';
-      setMonitoringError(message);
-      setMonitoringStatus('error');
-      throw new Error(message);
-    }
+    inheritedMedia?.cameraStream?.getTracks?.().forEach((track) => track.stop());
+    inheritedMedia?.screenStream?.getTracks?.().forEach((track) => track.stop());
 
-    const screenStream = screenResult.value;
-    const cameraStream = cameraResult.value;
-    const displaySurface = screenStream.getVideoTracks()[0]?.getSettings?.().displaySurface;
-    if (displaySurface && displaySurface !== 'monitor') {
-      screenStream.getTracks().forEach((track) => track.stop());
-      cameraStream.getTracks().forEach((track) => track.stop());
-      const message = 'Please select Entire Screen — not a tab or window.';
-      setMonitoringError(message);
-      setMonitoringStatus('error');
-      throw new Error(message);
-    }
-
-    cameraStreamRef.current = cameraStream;
-    screenStreamRef.current = screenStream;
-    cameraVideoRef.current = createHiddenVideo(cameraStream);
-    screenVideoRef.current = createHiddenVideo(screenStream);
+    cameraStreamRef.current = null;
+    screenStreamRef.current = null;
+    cameraVideoRef.current = null;
+    screenVideoRef.current = null;
 
     try {
       const response = await api.proctorStartSession({
@@ -364,17 +388,9 @@ export const useWritingProctoring = () => {
       sessionIdRef.current = sessionId;
       activeRef.current = true;
       warningsRef.current = 0;
+      localMetaRef.current = { fullName, passportId };
+      localEventsRef.current.clear();
       logEvent('writing_monitoring_started', 'Writing monitoring started', 'info');
-      startRecorder();
-      startPeriodicSnapshots();
-      setTimeout(() => {
-        if (activeRef.current) captureSnapshot('Writing session start');
-      }, 1200);
-      screenStream.getVideoTracks()[0]?.addEventListener('ended', () => {
-        if (!activeRef.current) return;
-        reportViolation('screen_share_stopped', 'Screen sharing stopped during Writing');
-        setMonitoringError('Screen sharing stopped. Writing monitoring is interrupted.');
-      });
       setMonitoringStatus('active');
       try { sessionStorage.setItem('writing_proctor_session_id', sessionId); } catch { /* ignore */ }
       return sessionId;
@@ -384,7 +400,7 @@ export const useWritingProctoring = () => {
       setMonitoringStatus('error');
       throw error;
     }
-  }, [captureSnapshot, cleanupMedia, logEvent, reportViolation, startPeriodicSnapshots, startRecorder]);
+  }, [cleanupMedia, logEvent]);
 
   useEffect(() => {
     cancelProctorMediaRelease();
@@ -404,6 +420,7 @@ export const useWritingProctoring = () => {
       if (remaining) await new Promise((resolve) => setTimeout(resolve, remaining));
     }
     activeRef.current = false;
+    persistLocal(); // yakuniy holatni (status: finished) lokal nusxaga yozamiz
     stopPeriodicSnapshots();
     await stopRecorder();
     while (pendingRequestsRef.current.size) {
@@ -417,7 +434,7 @@ export const useWritingProctoring = () => {
     eventMetaRef.current.clear();
     cleanupMedia();
     setMonitoringStatus('finished');
-  }, [cleanupMedia, stopPeriodicSnapshots, stopRecorder]);
+  }, [cleanupMedia, persistLocal, stopPeriodicSnapshots, stopRecorder]);
 
   useEffect(() => () => {
     activeRef.current = false;
