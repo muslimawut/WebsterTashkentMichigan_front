@@ -116,8 +116,7 @@ const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
     {
       name: 'Click',
       icon: clicklogo,
-      description: 'Pay with Click',
-      disabled: true
+      description: 'Pay with Click'
     },
     {
       name: 'Xazna',
