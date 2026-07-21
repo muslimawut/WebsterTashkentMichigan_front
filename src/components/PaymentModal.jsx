@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/api';
 import { sanitizeUrl } from '../utils/sanitize';
-import clicklogo from '../../clicklogo.svg';
+import clicklogo from '../../clicklogo.png';
 import paymelogo from '../../payme.svg';
 import xaznalogo from '../../xazna.png';
 
@@ -236,10 +236,10 @@ const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
             </svg>
             <p className="text-sm text-gray-200 leading-relaxed">
-              Payments are accepted{' '}
-              <span className="font-bold text-red-300">ONLY</span> via{' '}
-              <img src={paymelogo} alt="Payme" className="inline-block h-5 w-auto align-middle" />.{' '}
-              <img src={clicklogo} alt="Click" className="inline-block h-5 w-auto align-middle rounded bg-white/80 px-1.5 py-0.5 opacity-50 grayscale" />{' '}
+              Payments are accepted via{' '}
+              <img src={paymelogo} alt="Payme" className="inline-block h-5 w-auto align-middle" />{' '}
+              and{' '}
+              <img src={clicklogo} alt="Click" className="inline-block h-5 w-auto align-middle" />.{' '}
               <img src={xaznalogo} alt="Xazna" className="inline-block h-5 w-auto align-middle rounded bg-white/80 px-1.5 py-0.5 opacity-50 grayscale" />{' '}
               <span className="text-yellow-300">no longer available.</span>
             </p>
