@@ -861,6 +861,11 @@ const ProctoringExam = () => {
 
   /* ── Kamera + mikrofon ruxsatini so'rash va tekshirish ──── */
   const checkDevices = useCallback(async () => {
+    // Full name va passport ID majburiy — sessiya bularsiz boshlanmaydi.
+    if (!fullName.trim() || !passportId.trim()) {
+      setPermissionError('Please enter your full name and passport serial & number to continue.');
+      return;
+    }
     setPermissionError('');
     setCameraCheckStatus('Requesting camera access…');
     setPhase('checking');
@@ -962,7 +967,7 @@ const ProctoringExam = () => {
       setMicOn(false);
       setPhase('idle');
     }
-  }, [attachTrackWatchers, startAudioMeter, stopAudioMeter]);
+  }, [attachTrackWatchers, startAudioMeter, stopAudioMeter, fullName, passportId]);
 
   /* ── Ekran ulashish (faqat butun ekran) ─────────────────── */
   const stopScreenShare = useCallback(() => {
@@ -1032,6 +1037,11 @@ const ProctoringExam = () => {
   /* ── Sessiyani boshlash ─────────────────────────────────── */
   const startExam = useCallback(async () => {
     if (!cameraOn) return;
+    // Full name va passport ID majburiy (himoya — tugma ham disable qilingan).
+    if (!fullName.trim() || !passportId.trim()) {
+      setPermissionError('Please enter your full name and passport serial & number to continue.');
+      return;
+    }
 
     // Enable'dan keyin kamera qora/stalled bo'lib qolgan bo'lsa session va
     // screen-share'ni boshlamaymiz. Student kamerani qayta ulashi kerak.
@@ -1483,6 +1493,9 @@ const ProctoringExam = () => {
     phase === 'finished' ? 'Completed' :
     phase === 'ready' ? 'Ready' : 'Not started';
 
+  // Full name va passport ID majburiy — bularsiz kamera/sessiya boshlanmaydi.
+  const detailsFilled = fullName.trim().length > 0 && passportId.trim().length > 0;
+
   // Kamera/mikrofon permissioni faqat student qoidalarni o'qib tasdiqlagandan
   // keyin so'raladi. Refresh yoki yangi kirishda qoidalar yana ko'rsatiladi.
   if (!rulesAccepted) {
@@ -1792,12 +1805,12 @@ const ProctoringExam = () => {
                 <span className="px-eyebrow">Candidate details</span>
                 <div className="px-fields">
                   <div className="px-field">
-                    <label>Full name</label>
-                    <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Your full name" />
+                    <label>Full name <span style={{ color: '#f87171' }}>*</span></label>
+                    <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Your full name" required aria-required="true" />
                   </div>
                   <div className="px-field">
-                    <label>Passport serial &amp; number</label>
-                    <input value={passportId} onChange={(e) => setPassportId(e.target.value)} placeholder="e.g. AD7113185" />
+                    <label>Passport serial &amp; number <span style={{ color: '#f87171' }}>*</span></label>
+                    <input value={passportId} onChange={(e) => setPassportId(e.target.value)} placeholder="e.g. AD7113185" required aria-required="true" />
                   </div>
                 </div>
 
@@ -1809,7 +1822,11 @@ const ProctoringExam = () => {
                       </svg>
                       <span>Camera and microphone are ready. When you press Start, you'll be asked to <b>share your entire screen</b> (required), then open the exam with the <b>Open Metrica Exam</b> button on the next screen.</span>
                     </div>
-                    <button className="px-btn px-btn-primary" onClick={startExam}>
+                    <button
+                      className="px-btn px-btn-primary"
+                      onClick={startExam}
+                      disabled={!detailsFilled}
+                    >
                       <span className="px-btn-glow" />
                       Start Exam
                     </button>
@@ -1818,13 +1835,17 @@ const ProctoringExam = () => {
                   <button
                     className={`px-btn px-btn-primary ${phase === 'checking' ? 'is-loading' : ''}`}
                     onClick={checkDevices}
-                    disabled={phase === 'checking'}
+                    disabled={phase === 'checking' || !detailsFilled}
                   >
                     <span className="px-btn-glow" />
                     {phase === 'checking' ? (cameraCheckStatus || 'Checking camera…') : 'Enable camera & microphone'}
                   </button>
                 )}
-                <p className="px-hint">Camera and microphone must stay on during the exam.</p>
+                <p className="px-hint">
+                  {detailsFilled
+                    ? 'Camera and microphone must stay on during the exam.'
+                    : 'Full name and passport serial & number are required to continue.'}
+                </p>
               </section>
             )}
 

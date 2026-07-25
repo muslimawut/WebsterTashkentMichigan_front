@@ -603,33 +603,36 @@ const WritingTestOnline = () => {
               <h3 className="text-2xl font-bold mb-1" style={{ color: '#1a3460' }}>Continue to Writing</h3>
               <p className="text-sm text-gray-400 mb-6">Confirm your details, then begin the 60-minute essay.</p>
 
-              <div className="space-y-4 mb-5">
+              <div className="space-y-4 mb-2">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Full name</label>
                   <input
                     value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="Your full name"
-                    className="w-full px-4 py-3 rounded-xl border border-gray-200 text-gray-800 outline-none transition-all"
-                    style={{ fontSize: 15 }}
-                    onFocus={(e) => { e.target.style.borderColor = '#1a3460'; e.target.style.boxShadow = '0 0 0 3px rgba(26,52,96,0.08)'; }}
-                    onBlur={(e) => { e.target.style.borderColor = '#e5e7eb'; e.target.style.boxShadow = 'none'; }}
+                    readOnly
+                    tabIndex={-1}
+                    aria-readonly="true"
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 outline-none cursor-not-allowed"
+                    style={{ fontSize: 15, backgroundColor: '#f3f4f6', color: '#6b7280' }}
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Passport serial &amp; number</label>
                   <input
                     value={passportId}
-                    onChange={(e) => setPassportId(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleBegin()}
-                    placeholder="e.g. AB7545522"
-                    className="w-full px-4 py-3 rounded-xl border border-gray-200 text-gray-800 outline-none transition-all"
-                    style={{ fontSize: 15 }}
-                    onFocus={(e) => { e.target.style.borderColor = '#1a3460'; e.target.style.boxShadow = '0 0 0 3px rgba(26,52,96,0.08)'; }}
-                    onBlur={(e) => { e.target.style.borderColor = '#e5e7eb'; e.target.style.boxShadow = 'none'; }}
+                    readOnly
+                    tabIndex={-1}
+                    aria-readonly="true"
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 outline-none cursor-not-allowed"
+                    style={{ fontSize: 15, backgroundColor: '#f3f4f6', color: '#6b7280' }}
                   />
                 </div>
               </div>
+              <p className="text-xs text-gray-400 mb-5 flex items-center gap-1">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+                Taken from your proctored exam registration — cannot be changed.
+              </p>
 
               <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3.5 mb-5">
                 <div className="flex items-center gap-2 mb-2.5">
