@@ -194,7 +194,8 @@ const AuthPage = () => {
     try {
       const response = await ApiService.login(formData.signInEmail, formData.signInPassword);
 
-      localStorage.setItem('authToken', response.access || response.token);
+      // JWT httpOnly cookie'da (backend o'rnatadi) — frontend tokenni SAQLAMAYDI.
+      // Faqat login holatini belgilaymiz; auth so'rovlarга cookie avtomatik boradi.
       localStorage.setItem('userLoggedIn', 'true');
       localStorage.setItem('userEmail', formData.signInEmail);
       localStorage.removeItem('currentPage'); // Clear current page
@@ -319,14 +320,11 @@ const AuthPage = () => {
     try {
       const response = await ApiService.verifyActivationCode(formData.email, formData.verificationCode);
 
-      // Save tokens to localStorage
-      if (response.access_token) {
-        localStorage.setItem('authToken', response.access_token);
-        localStorage.setItem('refreshToken', response.refresh_token);
-        localStorage.setItem('userLoggedIn', 'true');
-        localStorage.setItem('userEmail', formData.email);
-        localStorage.removeItem('currentPage'); // Clear current page
-      }
+      // JWT httpOnly cookie'da (backend o'rnatadi) — frontend tokenni SAQLAMAYDI.
+      // Access/refresh token localStorage'ga yozilmaydi; auth cookie orqali boradi.
+      localStorage.setItem('userLoggedIn', 'true');
+      localStorage.setItem('userEmail', formData.email);
+      localStorage.removeItem('currentPage'); // Clear current page
 
       // Tasdiqlash tugadi — pending holatni o'chiramiz
       localStorage.removeItem('pendingActivation');

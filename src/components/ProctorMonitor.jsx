@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../api/api';
-import { analyzeProctoringSession, analyzeScreens, isAiProctorAvailable } from '../utils/tabProctor';
+import { analyzeProctoringSession, analyzeScreens, isAiProctorAvailable } from '../utils/aiProctor';
 import { getSession as getLocalSession } from '../utils/proctorStore';
 
 /*
@@ -52,8 +52,8 @@ const normEvent = (e) => ({
   message: pick(e, ['message', 'msg', 'text'], ''),
   severity: pick(e, ['severity', 'level'], 'info'),
   time: pick(e, ['client_time', 'created_at', 'time', 'timestamp'], null),
-  // Browser <img>/<video> original media URL'ni CORSsiz ko'rsata oladi. Canvas
-  // tahlili uchun alohida serverless proxy tabProctor ichida qo'llanadi.
+  // Browser <img>/<video> original media URL'ni CORSsiz ko'rsata oladi. Vizual
+  // tahlil aiProctor ichida (Anthropic url/base64 image bloklari) bajariladi.
   image: pick(e, ['image', 'screenshot', 'screenshot_url', 'image_url'], null),
   clip: pick(e, ['clip', 'clip_url', 'video', 'video_url'], null),
 });

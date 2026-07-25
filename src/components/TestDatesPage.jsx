@@ -15,9 +15,9 @@ const TestDatesPage = () => {
 
   // Auth'dan keyin qaytganda — saqlangan booking bo'lsa, modalni avtomatik ochamiz
   useEffect(() => {
-    const token = localStorage.getItem('authToken');
+    const loggedIn = localStorage.getItem('userLoggedIn') === 'true';
     const pending = localStorage.getItem('pendingBooking');
-    if (token && pending) {
+    if (loggedIn && pending) {
       try {
         const date = JSON.parse(pending);
         setSelectedDate(date);

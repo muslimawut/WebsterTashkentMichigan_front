@@ -3,6 +3,16 @@ import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { reportErrorToTelegram } from '../utils/telegram';
 
+// Barcha axios so'rovlari cookie (session) yuborsin — global default.
+axios.defaults.withCredentials = true;
+
+// Auth endi to'liq httpOnly cookie orqali. Eski JWT localStorage'da qolgan bo'lsa
+// tozalaymiz — aks holda eski/muddati o'tgan Bearer yuborilib qolishi mumkin edi.
+try {
+  localStorage.removeItem('authToken');
+  localStorage.removeItem('refreshToken');
+} catch { /* localStorage mavjud emas */ }
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 // Proctoring backend URL ataylab manual: .env qiymatiga bog'liq emas.
 const PROCTORING_API_BASE_URL = 'https://mept.webster.uz/api/v1';
@@ -10,15 +20,13 @@ const PROCTORING_API_BASE_URL = 'https://mept.webster.uz/api/v1';
 // Proctoring backend guide bo'yicha public va asosiy /api/v1 servisidan alohida.
 // fetch helper JSON/text response hamda DRF validation xatolarini saqlab beradi.
 const proctoringRequest = async (path, options = {}) => {
-  const { requireAuth = false, ...requestOptions } = options;
+  // Auth httpOnly cookie orqali (credentials: 'include') — qo'lda Bearer kerak emas.
+  const { requireAuth: _requireAuth, ...requestOptions } = options;
   const headers = new Headers(requestOptions.headers || {});
-  if (requireAuth) {
-    const token = localStorage.getItem('authToken');
-    if (token) headers.set('Authorization', `Bearer ${token}`);
-  }
   const response = await fetch(`${PROCTORING_API_BASE_URL}${path}`, {
     ...requestOptions,
     headers,
+    credentials: 'include',
   });
   const contentType = response.headers.get('content-type') || '';
   const data = contentType.includes('application/json')
@@ -50,10 +58,8 @@ const axiosInstance = axios.create({
 
 axiosInstance.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('authToken');
-    if (token && !config.skipAuth) {
-      config.headers['Authorization'] = `Bearer ${token}`;
-    }
+    // Auth httpOnly cookie orqali (withCredentials) — Authorization Bearer yuborilmaydi.
+    // Django uchun CSRF tokenini esa cookie'dan olib header'ga qo'yamiz.
     const csrfToken = getCsrfToken();
     if (csrfToken && ['post', 'put', 'patch', 'delete'].includes(config.method)) {
       config.headers['X-CSRFToken'] = csrfToken;
@@ -90,10 +96,41 @@ const showApiError = (message) => {
   });
 };
 
+// JWT httpOnly cookie'da saqlanadi. Access token muddati tugasa, refresh token
+// ham cookie orqali AVTOMATIK boradi — body'siz. Bir vaqtda faqat bitta refresh
+// so'rovi ketsin (parallel 401'larda takror bo'lmasin).
+let refreshInFlight = null;
+const refreshAuthToken = () => {
+  if (!refreshInFlight) {
+    refreshInFlight = axiosInstance
+      // body yo'q; refresh token localStorage'dan emas, cookie'dan boradi
+      .post('/users/token/refresh', null, { skipAuth: true, skipErrorToast: true, _retried: true })
+      .finally(() => { refreshInFlight = null; });
+  }
+  return refreshInFlight;
+};
+
 // Response interceptor (error handling)
 axiosInstance.interceptors.response.use(
   (response) => response.data,
-  (error) => {
+  async (error) => {
+    const original = error.config;
+    const status0 = error.response?.status;
+    const isAuthEndpoint = /\/users\/(login|token\/refresh)/.test(original?.url || '');
+
+    // 401 — access token muddati tugagan bo'lishi mumkin. Cookie'ni bir marta
+    // refresh qilib, asl so'rovni qayta yuboramiz. Login/refresh'ning o'zi bundan mustasno.
+    if (status0 === 401 && original && !original._retried && !isAuthEndpoint) {
+      original._retried = true;
+      try {
+        await refreshAuthToken();
+        return axiosInstance(original); // cookie yangilandi — qayta urinamiz
+      } catch (_) {
+        // Refresh ham muvaffaqiyatsiz — sessiya tugagan. Pastdagi oddiy xato ishlovига tushamiz.
+        try { localStorage.removeItem('userLoggedIn'); } catch { /* ignore */ }
+      }
+    }
+
     console.error('API Error:', error);
 
     let errorMessage = 'An error occurred';
@@ -186,7 +223,8 @@ class ApiService {
         is_bachelor: userData.isBachelor,
         password: userData.password,
       },
-      { skipAuth: true }
+      // AuthPage o'zi xatoni ko'rsatadi — global toast ikki marta bo'lmasin.
+      { skipAuth: true, skipErrorToast: true }
     );
   }
 
@@ -197,16 +235,24 @@ class ApiService {
         email,
         activate_code: parseInt(activateCode),
       },
-      { skipAuth: true }
+      // AuthPage o'zi xatoni ko'rsatadi — global toast ikki marta bo'lmasin.
+      { skipAuth: true, skipErrorToast: true }
     );
   }
 
   async login(email, password) {
+    // Backend JWT'ni httpOnly cookie sifatida o'rnatadi (withCredentials orqali).
+    // skipErrorToast: AuthPage o'zi xatoni ko'rsatadi — global toast ikki marta bo'lmasin.
     return axiosInstance.post(
       '/users/login',
       { email, password },
-      { skipAuth: true }
+      { skipAuth: true, skipErrorToast: true }
     );
+  }
+
+  // Access token muddati tugaganda cookie'ni yangilaydi — body'siz, cookie avtomatik.
+  async refreshToken() {
+    return axiosInstance.post('/users/token/refresh', null, { skipAuth: true });
   }
 
   async getProfile() {

@@ -129,6 +129,7 @@ const ChangePasswordModal = ({ isOpen, onClose }) => {
     try {
       const response = await fetch(`${API_BASE_URL}/users/reset-password`, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -160,6 +161,12 @@ const ChangePasswordModal = ({ isOpen, onClose }) => {
       return;
     }
 
+    // Kod aynan 8 belgili
+    if (formData.activationCode.trim().length !== 8) {
+      showNotification('The verification code must be exactly 8 characters', 'warning');
+      return;
+    }
+
     if (passwordErrors.length > 0) {
       showNotification('Please fulfill all password requirements!', 'warning');
       return;
@@ -174,6 +181,7 @@ const ChangePasswordModal = ({ isOpen, onClose }) => {
     try {
       const response = await fetch(`${API_BASE_URL}/users/reset-password-confirm`, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -295,8 +303,8 @@ const ChangePasswordModal = ({ isOpen, onClose }) => {
                     required
                     disabled={loading}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#024890] focus:border-transparent outline-none transition disabled:opacity-50 text-center text-2xl tracking-widest"
-                    placeholder="000000"
-                    maxLength={6}
+                    placeholder="XXXXXXXX"
+                    maxLength={8}
                   />
                 </div>
 

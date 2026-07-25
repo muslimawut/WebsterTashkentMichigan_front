@@ -4,16 +4,18 @@ import api from '../api/api';
 
 const StaffRoute = ({ children }) => {
   const location = useLocation();
-  const token = localStorage.getItem('authToken');
-  const [access, setAccess] = useState(token ? 'checking' : 'login');
+  // Auth httpOnly cookie orqali — login holatini userLoggedIn bayrog'i bildiradi.
+  const loggedIn = localStorage.getItem('userLoggedIn') === 'true';
+  const [access, setAccess] = useState(loggedIn ? 'checking' : 'login');
 
   useEffect(() => {
-    if (!token) {
+    if (!loggedIn) {
       setAccess('login');
       return undefined;
     }
 
     let cancelled = false;
+    // getProfile cookie bilan ketadi; is_staff ni backend hal qiladi.
     api.getProfile()
       .then((profile) => {
         if (cancelled) return;
@@ -24,7 +26,7 @@ const StaffRoute = ({ children }) => {
       });
 
     return () => { cancelled = true; };
-  }, [token]);
+  }, [loggedIn]);
 
   if (access === 'login') {
     const redirect = encodeURIComponent(`${location.pathname}${location.search}`);

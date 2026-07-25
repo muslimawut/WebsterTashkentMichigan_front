@@ -26,7 +26,12 @@ const METRICA_EXAM_URL =
 const PROCTORING_APP_URL = 'https://protoring.netlify.app/';
 const MEDIAPIPE_VERSION = '0.10.12';
 
-const SNAPSHOT_INTERVAL_MS = 45000; // davriy (background) ekran snapshoti. Tab almashish/gaze/2-yuz kabi qoida buzilishlarida darhol alohida snapshot olinadi — shuning uchun davriy intervalni katta qildik (hajmni ~5x kamaytiradi).
+// Davriy ekran snapshoti. MEPT foreground'da bo'lsa (student MEPT sahifasida)
+// kamdan-kam; MEPT yashiringanda (student Metrica yoki BOSHQA tab/ilovada — eng
+// katta cheating xavfi) ancha tez-tez, chunki tab almashish visibilitychange
+// bilan ushlanmaydi, faqat ekran-share kadrida ko'rinadi.
+const SNAPSHOT_INTERVAL_MS = 15000;        // MEPT ko'rinib turganda
+const SNAPSHOT_INTERVAL_HIDDEN_MS = 6000;  // MEPT yashiringanda (boshqa tab/ilova)
 const SNAPSHOT_MAX_W = 1920;        // snapshot eni (aniqroq — matn o'qiladi)
 const SNAPSHOT_QUALITY = 0.85;      // JPEG sifati (0-1)
 
@@ -1083,6 +1088,7 @@ const ProctoringExam = () => {
 
     const GRACE_MS = 2500;
     let lastSwitchCapture = 0; // blur va visibility juft ishlaganda dublikat bo'lmasligi uchun
+    const switchEvidenceTimers = new Set();
 
     // Shubhali o'tish — snapshot + qisqa ekran zapisi (cooldown bilan).
     const flagSwitch = (type, message) => {
@@ -1090,6 +1096,13 @@ const ProctoringExam = () => {
       if (t - lastSwitchCapture < 1500) return; // cooldown
       lastSwitchCapture = t;
       flagCheating(type, message);
+      // visibilitychange/blur o'tishdan bir lahza OLDIN ishlashi mumkin — shuning
+      // uchun ~1.2s keyin student o'tgan tab/ilova ekranini alohida snapshot qilamiz.
+      const timer = setTimeout(() => {
+        switchEvidenceTimers.delete(timer);
+        if (activeRef.current) captureSnapshot('Tab/app switch evidence (screen)', { silent: true });
+      }, 1200);
+      switchEvidenceTimers.add(timer);
     };
 
     const onVisibility = () => {
@@ -1151,6 +1164,8 @@ const ProctoringExam = () => {
       window.removeEventListener('blur', onBlur);
       clearInterval(camInterval);
       clearInterval(tabInterval);
+      switchEvidenceTimers.forEach((timer) => clearTimeout(timer));
+      switchEvidenceTimers.clear();
     };
   }, [phase, logEvent, captureSnapshot, flagCheating]);
 
@@ -1175,22 +1190,45 @@ const ProctoringExam = () => {
       }
     };
 
+    // MEPT yashirin bo'lsa tez-tez, aks holda kamroq snapshot olamiz.
+    const intervalFor = () => (document.hidden ? SNAPSHOT_INTERVAL_HIDDEN_MS : SNAPSHOT_INTERVAL_MS);
+
     let worker = null;
     let fallback = null;
+    let fallbackInterval = null;
+    const applyInterval = () => {
+      if (worker) {
+        worker.postMessage({ type: 'start', interval: intervalFor() });
+      } else if (fallback !== null) {
+        clearInterval(fallbackInterval);
+        fallbackInterval = setInterval(takePeriodic, intervalFor());
+      }
+    };
+    // MEPT yashiringan/ko'ringan zahoti darhol bir kadr olamiz (boshqa tabga o'tish
+    // yoki qaytish lahzasini ushlash uchun) va cadence'ni yangilaymiz.
+    const onVisibilityCadence = () => {
+      if (activeRef.current) takePeriodic();
+      applyInterval();
+    };
+
     try {
       const url = URL.createObjectURL(new Blob([workerCode], { type: 'application/javascript' }));
       worker = new Worker(url);
       URL.revokeObjectURL(url);
       worker.onmessage = takePeriodic;
-      worker.postMessage({ type: 'start', interval: SNAPSHOT_INTERVAL_MS });
+      worker.postMessage({ type: 'start', interval: intervalFor() });
     } catch {
       // Worker bo'lmasa — oddiy interval (background'da sekin bo'lishi mumkin)
-      fallback = setInterval(takePeriodic, SNAPSHOT_INTERVAL_MS);
+      fallback = true;
+      fallbackInterval = setInterval(takePeriodic, intervalFor());
     }
 
+    document.addEventListener('visibilitychange', onVisibilityCadence);
+
     return () => {
+      document.removeEventListener('visibilitychange', onVisibilityCadence);
       if (worker) { try { worker.postMessage({ type: 'stop' }); worker.terminate(); } catch { /* ignore */ } }
-      if (fallback) clearInterval(fallback);
+      if (fallbackInterval) clearInterval(fallbackInterval);
     };
   }, [phase, captureSnapshot]);
 
@@ -1418,8 +1456,9 @@ const ProctoringExam = () => {
     try { sessionStorage.removeItem('proctoring_session_id'); } catch { /* unavailable */ }
     eventMetaRef.current.clear();
     stopAudioMeter();
-    // Kamera va Entire Screen streamlarini to'xtatmaymiz: Writing shu tracklarni
-    // qayta permission so'ramasdan qabul qiladi.
+    // Kamera va Entire Screen streamlarini to'xtatmaymiz: ONLINE Writing shu
+    // tracklarni qayta permission so'ramasdan qabul qiladi va proctoring uzluksiz
+    // davom etadi (snapshot + klip + davriy monitoring to'xtamaydi).
     handoffProctorMedia({
       cameraStream: streamRef.current,
       screenStream: screenStreamRef.current,
@@ -1435,7 +1474,8 @@ const ProctoringExam = () => {
     setPhase('finished');
     const writingCandidate = { fullName: fullName.trim(), passportId: passportId.trim() };
     try { sessionStorage.setItem('writing_candidate', JSON.stringify(writingCandidate)); } catch { /* unavailable */ }
-    navigate('/writing-test', { replace: true, state: writingCandidate });
+    // ONLINE Writing variantiga o'tamiz — kamera/mikrofon/ekran davom etadi.
+    navigate('/writing-test-online', { replace: true, state: writingCandidate });
   }, [fullName, navigate, passportId, stopAudioMeter, stopSegmentLoop]);
 
   const examLabel =

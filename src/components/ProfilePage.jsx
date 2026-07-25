@@ -182,8 +182,8 @@ const ProfilePage = () => {
     setError('');
 
     try {
-      const token = localStorage.getItem('authToken');
-      if (!token) {
+      const loggedIn = localStorage.getItem('userLoggedIn') === 'true';
+      if (!loggedIn) {
         showNotification('Session expired. Please login again.', 'error');
         return;
       }
@@ -204,10 +204,8 @@ const ProfilePage = () => {
 
       const response = await fetch(`${API_BASE_URL}/users/profile`, {
         method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`
-          // Don't set Content-Type, browser will set it automatically with boundary
-        },
+        credentials: 'include', // auth httpOnly cookie orqali — Bearer header kerak emas
+        // Content-Type ataylab qo'yilmaydi — browser multipart boundary'ni o'zi qo'yadi
         body: formData
       });
 

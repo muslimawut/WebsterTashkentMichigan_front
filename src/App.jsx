@@ -21,6 +21,7 @@ import ReadingInstructions from './components/ReadingInstructions';
 import ReadingTest from './components/ReadingTest';
 import WritingInstructions from './components/WritingInstructions';
 import WritingTest from './components/WritingTest';
+import WritingTestOnline from './components/WritingTestOnline';
 import WritingExam from './components/WritingExam';
 import ProctoringExam from './components/ProctoringExam';
 import ProctorMonitor from './components/ProctorMonitor';
@@ -40,9 +41,9 @@ const HomePage = ({ onSignUpClick, isLoggedIn }) => {
 
   // Auth'dan keyin qaytganda — saqlangan booking bo'lsa, modalni avtomatik ochamiz
   useEffect(() => {
-    const token = localStorage.getItem('authToken');
+    const loggedIn = localStorage.getItem('userLoggedIn') === 'true';
     const pending = localStorage.getItem('pendingBooking');
-    if (token && pending) {
+    if (loggedIn && pending) {
       try {
         const date = JSON.parse(pending);
         setSelectedDate(date);
@@ -178,10 +179,16 @@ export default function App() {
             element={<WritingInstructions />}
           />
 
-          {/* Writing Test Route */}
+          {/* Writing Test Route (offline — media so'ralmaydi) */}
           <Route
             path="/writing-test"
             element={<WritingTest />}
+          />
+
+          {/* Writing Test ONLINE Route — Metrica'dan keyin kamera+ekran davom etadi */}
+          <Route
+            path="/writing-test-online"
+            element={<WritingTestOnline />}
           />
 
           {/* New Writing Exam Route */}

@@ -1,18 +1,19 @@
-// Telegram error reporting — adminlar monitoring qilishi uchun
-// Frontend'dan to'g'ridan-to'g'ri Telegram Bot API'ga yuboradi.
+// Telegram error/support reporting — endi BACKEND orqali yuboriladi.
+// Frontend to'g'ridan-to'g'ri Telegram'ga EMAS, POST /api/v1/telegram/notify ga
+// JSON jo'natadi; backend Telegram'ga forward qiladi. Bot token frontendда saqlanmaydi.
+// Body shakli: { name, email, phone, message }.
+//
+// Eslatma: bu fayl api.js ni import QILMAYDI (circular bo'lardi) — shu sabab
+// to'g'ridan-to'g'ri fetch ishlatiladi (credentials: 'include' bilan).
 
-const BOT_TOKEN = import.meta.env.VITE_TELEGRAM_BOT_TOKEN;
-const CHAT_ID = import.meta.env.VITE_TELEGRAM_CHAT_ID;
-// Support xabarlari ham umumiy Telegram guruhiga yuboriladi.
-const SUPPORT_CHAT_ID = import.meta.env.VITE_TELEGRAM_CHAT_ID;
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const NOTIFY_URL = API_BASE_URL ? `${API_BASE_URL}/telegram/notify` : '';
 
-// Lokal (localhost / 127.0.0.1) xatolar Telegramga ketmaydi
+// Lokal (localhost / 127.0.0.1) xatolar backendga yuborilmaydi
 const isLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
 
-const isConfigured = Boolean(BOT_TOKEN && CHAT_ID && !isLocalhost);
-const isSupportConfigured = Boolean(
-  import.meta.env.VITE_TELEGRAM_BOT_TOKEN && SUPPORT_CHAT_ID && !isLocalhost
-);
+const isConfigured = Boolean(NOTIFY_URL && !isLocalhost);
+const isSupportConfigured = isConfigured;
 
 // Bir xil xatolik qayta-qayta yuborilmasligi uchun oddiy throttle (60s)
 const recentlySent = new Map();
@@ -34,18 +35,12 @@ const STATUS_LABELS = {
   504: '🐢 Server javob bermadi (504)',
 };
 
-const escapeHtml = (str) =>
-  String(str ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-
 const truncate = (str, max = 700) => {
   const s = String(str ?? '');
   return s.length > max ? `${s.slice(0, max)}…` : s;
 };
 
-// So'rov payload'ini chiroyli matnga aylantiramiz (to'liq, hamma maydon bilan)
+// So'rov payload'ini o'qiladigan matnga aylantiramiz (to'liq, hamma maydon bilan)
 const formatPayload = (payload) => {
   if (payload == null) return null;
   let obj = payload;
@@ -70,21 +65,39 @@ const formatPayload = (payload) => {
   }
 };
 
-// Joriy foydalanuvchi haqida qisqa ma'lumot (agar mavjud bo'lsa)
-const getUserInfo = () => {
+// Joriy foydalanuvchi kontakti (name/email/phone) — payload uchun (agar mavjud bo'lsa)
+const getUserContact = () => {
   try {
     const raw = localStorage.getItem('user') || localStorage.getItem('profile');
-    if (!raw) return null;
+    if (!raw) return {};
     const u = JSON.parse(raw);
-    const name = [u.first_name, u.last_name].filter(Boolean).join(' ');
-    return name || u.email || u.phone || null;
+    const name = [u.first_name, u.last_name].filter(Boolean).join(' ') || u.name || '';
+    return { name, email: u.email || '', phone: u.phone || '' };
   } catch {
-    return null;
+    return {};
   }
 };
 
+// Backend /telegram/notify ga JSON yuboramiz. Bu XOM fetch — axios interceptor'ga
+// tushmaydi, shuning uchun (backend xatosini backendga qayta yuborish) cheksiz
+// sikl hosil bo'lmaydi.
+const postNotify = ({ name, email, phone, message }) => {
+  if (!NOTIFY_URL) return Promise.resolve(null);
+  return fetch(NOTIFY_URL, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: name || '',
+      email: email || '',
+      phone: phone || '',
+      message: message || '',
+    }),
+  });
+};
+
 /**
- * Telegramga user-friendly error hisobotini yuboradi.
+ * Xatolik hisobotini backend orqali Telegramga yuboradi.
  * @param {Object} info
  * @param {string} info.message  - foydalanuvchiga ko'rsatilgan/sodda xabar
  * @param {number} [info.status] - HTTP status kodi
@@ -94,7 +107,7 @@ const getUserInfo = () => {
  * @param {*}      [info.payload] - so'rov tanasi (request body)
  */
 export const reportErrorToTelegram = async ({ message, status, method, url, details, payload } = {}) => {
-  if (!isConfigured) return; // token sozlanmagan bo'lsa, jim turamiz
+  if (!isConfigured) return; // backend/URL sozlanmagan bo'lsa, jim turamiz
 
   // Throttle: bir xil (status + url + message) ni qayta yubormaymiz
   const key = `${status || ''}|${url || ''}|${message || ''}`;
@@ -108,56 +121,49 @@ export const reportErrorToTelegram = async ({ message, status, method, url, deta
     timeZone: 'Asia/Tashkent',
     hour12: false,
   });
-  const user = getUserInfo();
+  const contact = getUserContact();
 
   const lines = [
-    `🚨 <b>Webster MEPT — Xatolik</b>`,
-    ``,
-    `${statusLabel}`,
-    `💬 <b>Xabar:</b> ${escapeHtml(truncate(message, 300))}`,
+    '🚨 Webster MEPT — Xatolik',
+    '',
+    statusLabel,
+    `💬 Xabar: ${truncate(message, 300)}`,
   ];
 
   if (method || url) {
-    lines.push(`🔗 <b>So‘rov:</b> <code>${escapeHtml(`${method || ''} ${url || ''}`.trim())}</code>`);
+    lines.push(`🔗 So‘rov: ${`${method || ''} ${url || ''}`.trim()}`);
   }
-  if (user) lines.push(`👤 <b>Foydalanuvchi:</b> ${escapeHtml(user)}`);
-  lines.push(`🕒 <b>Vaqt:</b> ${escapeHtml(time)} (Toshkent)`);
-  lines.push(`🌐 <b>Sahifa:</b> <code>${escapeHtml(window.location.pathname)}</code>`);
+  if (contact.name) lines.push(`👤 Foydalanuvchi: ${contact.name}`);
+  lines.push(`🕒 Vaqt: ${time} (Toshkent)`);
+  lines.push(`🌐 Sahifa: ${window.location.pathname}`);
 
   const formattedPayload = formatPayload(payload);
   if (formattedPayload) {
-    lines.push(``, `📦 <b>Yuborilgan ma‘lumot (payload):</b>`, `<pre>${escapeHtml(truncate(formattedPayload))}</pre>`);
+    lines.push('', '📦 Yuborilgan ma‘lumot (payload):', truncate(formattedPayload));
   }
 
   if (details) {
     // Stack trace bo'lsa, fayl:satr:ustun ma'lumoti kesilmasligi uchun ko'proq joy beramiz
     const detailsMax = /\n\s*at\s|@http|@\//.test(String(details)) ? 2500 : 700;
-    lines.push(``, `🧩 <b>Server javobi / Stack:</b>`, `<pre>${escapeHtml(truncate(details, detailsMax))}</pre>`);
+    lines.push('', '🧩 Server javobi / Stack:', truncate(details, detailsMax));
   }
 
-  const text = lines.join('\n');
-
   try {
-    await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: CHAT_ID,
-        text,
-        parse_mode: 'HTML',
-        disable_web_page_preview: true,
-      }),
+    await postNotify({
+      name: contact.name || 'Webster MEPT (system)',
+      email: contact.email,
+      phone: contact.phone,
+      message: lines.join('\n'),
     });
   } catch (e) {
-    // Telegramga yuborish o'zi xato bersa, ilovani buzmaymiz
-    console.warn('Telegram error report failed:', e);
+    // Yuborish o'zi xato bersa, ilovani buzmaymiz
+    console.warn('Telegram notify (error report) failed:', e);
   }
 };
 
 /**
- * Student yuborgan texnik muammoni developerlar Telegram guruhiga yetkazadi.
- * Bu funksiya xatolik reporteridan alohida: throttle yo'q va natija UI'ga
- * qaytariladi, shuning uchun student xabari borgan-bormaganini biladi.
+ * Student yuborgan texnik muammoni backend orqali developerlar guruhiga yetkazadi.
+ * Natija UI'ga qaytariladi, shuning uchun student xabari borgan-bormaganini biladi.
  */
 export const sendSupportReportToTelegram = async ({
   message,
@@ -175,7 +181,7 @@ export const sendSupportReportToTelegram = async ({
   if (!isSupportConfigured) {
     throw new Error(isLocalhost
       ? 'Support reports are disabled on localhost.'
-      : 'Telegram support is not configured.');
+      : 'Support is not configured.');
   }
 
   const issue = String(message || '').trim();
@@ -187,46 +193,44 @@ export const sendSupportReportToTelegram = async ({
   });
   const connection = navigator.onLine ? 'Online' : 'Offline';
   const lines = [
-    '🆘 <b>Webster MEPT — Student support request</b>',
+    '🆘 Webster MEPT — Student support request',
     '',
-    `🏷 <b>Category:</b> ${escapeHtml(category || 'Other')}`,
-    '💬 <b>Problem:</b>',
-    `<pre>${escapeHtml(truncate(issue, 1200))}</pre>`,
+    `🏷 Category: ${category || 'Other'}`,
+    '💬 Problem:',
+    truncate(issue, 1200),
     '',
-    `👤 <b>Student:</b> ${escapeHtml(fullName || 'Not entered')}`,
-    `🪪 <b>Passport:</b> <code>${escapeHtml(passportId || 'Not entered')}</code>`,
-    `🧾 <b>Session:</b> <code>${escapeHtml(sessionId || 'Not started')}</code>`,
-    `📍 <b>Stage:</b> ${escapeHtml(phase || 'unknown')}`,
-    `📷 <b>Camera:</b> ${cameraOn ? 'Connected' : 'Disconnected'}`,
-    `🎤 <b>Microphone:</b> ${micOn ? 'Connected' : 'Disconnected'}`,
-    `🖥 <b>Screen share:</b> ${screenOn ? 'Active' : 'Inactive'}`,
-    `🌐 <b>Connection:</b> ${connection}`,
+    `👤 Student: ${fullName || 'Not entered'}`,
+    `🪪 Passport: ${passportId || 'Not entered'}`,
+    `🧾 Session: ${sessionId || 'Not started'}`,
+    `📍 Stage: ${phase || 'unknown'}`,
+    `📷 Camera: ${cameraOn ? 'Connected' : 'Disconnected'}`,
+    `🎤 Microphone: ${micOn ? 'Connected' : 'Disconnected'}`,
+    `🖥 Screen share: ${screenOn ? 'Active' : 'Inactive'}`,
+    `🌐 Connection: ${connection}`,
   ];
 
   if (cameraCheckStatus) {
-    lines.push(`🔎 <b>Camera check:</b> ${escapeHtml(truncate(cameraCheckStatus, 300))}`);
+    lines.push(`🔎 Camera check: ${truncate(cameraCheckStatus, 300)}`);
   }
   if (permissionError) {
-    lines.push(`⚠️ <b>Current error:</b> ${escapeHtml(truncate(permissionError, 600))}`);
+    lines.push(`⚠️ Current error: ${truncate(permissionError, 600)}`);
   }
 
-  lines.push(`🕒 <b>Time:</b> ${escapeHtml(time)} (Tashkent)`);
-  lines.push(`🔗 <b>Page:</b> <code>${escapeHtml(`${window.location.pathname}${window.location.search}`)}</code>`);
-  lines.push(`🧭 <b>Browser:</b> ${escapeHtml(truncate(navigator.userAgent, 350))}`);
+  lines.push(`🕒 Time: ${time} (Tashkent)`);
+  lines.push(`🔗 Page: ${window.location.pathname}${window.location.search}`);
+  lines.push(`🧭 Browser: ${truncate(navigator.userAgent, 350)}`);
 
-  const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      chat_id: SUPPORT_CHAT_ID,
-      text: lines.join('\n'),
-      parse_mode: 'HTML',
-      disable_web_page_preview: true,
-    }),
+  const response = await postNotify({
+    name: fullName || 'MEPT Student',
+    email: '',
+    phone: '',
+    message: lines.join('\n'),
   });
-  const result = await response.json().catch(() => null);
-  if (!response.ok || !result?.ok) {
-    throw new Error(result?.description || `Telegram request failed (${response.status}).`);
+
+  const result = await response?.json?.().catch(() => null);
+  if (!response || !response.ok || (result && result.ok === false)) {
+    const desc = result?.detail || result?.message || result?.error;
+    throw new Error(desc || `Notify request failed (${response?.status ?? 'network'}).`);
   }
   return true;
 };
