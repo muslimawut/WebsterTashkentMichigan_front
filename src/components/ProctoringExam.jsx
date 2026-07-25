@@ -1076,7 +1076,15 @@ const ProctoringExam = () => {
       if (!sid) throw new Error('Proctoring API did not return session_id.');
     } catch (error) {
       stopScreenShare();
-      setPermissionError(`Could not start proctoring: ${getProctoringApiErrorMessage(error)}`);
+      const raw = getProctoringApiErrorMessage(error);
+      // "No online test booking found for the provided passport ID" — user tushunishi
+      // uchun soddalashtiramiz.
+      const isPassportBooking = /booking/i.test(raw) && /passport/i.test(raw);
+      setPermissionError(
+        isPassportBooking
+          ? 'Incorrect passport ID. Please check your passport serial & number and try again.'
+          : `Could not start proctoring: ${raw}`
+      );
       return;
     }
     sessionIdRef.current = sid;

@@ -765,18 +765,17 @@ const ProctorMonitor = () => {
               {error && <p className="pm-err">{error}</p>}
             </section>
 
-            {/* AI Proctor */}
+            {/* AI Proctor — faqat AI mavjud bo'lganda ko'rsatamiz (aks holda butun karta yashirin) */}
+            {aiAvailable && (
             <section className="pm-card pm-ai">
               <div className="pm-ai-head">
                 <p className="pm-eyebrow">AI Proctor</p>
-                <button className="pm-ai-btn" onClick={runAi} disabled={aiLoading || !aiAvailable}>
+                <button className="pm-ai-btn" onClick={runAi} disabled={aiLoading}>
                   {aiLoading ? 'Analyzing…' : (aiReview ? 'Re-analyze' : 'Analyze')}
                 </button>
               </div>
 
-              {!aiAvailable ? (
-                <p className="pm-empty">AI unavailable — set VITE_TAB_PROCTOR_API_KEY.</p>
-              ) : !aiReview ? (
+              {!aiReview ? (
                 <p className="pm-empty">{aiLoading ? 'Analyzing the activity log…' : 'No AI review yet.'}</p>
               ) : (
                 <>
@@ -817,6 +816,7 @@ const ProctorMonitor = () => {
                 </>
               )}
             </section>
+            )}
 
             {/* Tab check (AI vision) — ruxsat etilgan tab rasmlari bilan solishtirish */}
             <section className="pm-card pm-tabcheck">
