@@ -22,8 +22,10 @@ const METRICA_EXAM_URL =
   import.meta.env.VITE_METRICA_EXAM_URL || 'https://metrica.cambridgemichigan.org/metrica/';
 
 // Backend session payloadidagi exam_url — proctoring frontend manzili.
-// Metrica tabini ochadigan URL bilan aralashtirilmaydi.
-const PROCTORING_APP_URL = 'https://protoring.netlify.app/';
+// Metrica tabini ochadigan URL bilan aralashtirilmaydi. Domen hardcode
+// qilinmaydi: qaysi hostda ishlayotgan bo'lsa (mept.webster.uz, localhost…)
+// o'shani yuboramiz.
+const PROCTORING_APP_URL = `${window.location.origin}/`;
 const MEDIAPIPE_VERSION = '0.10.12';
 
 // Davriy ekran snapshoti. MEPT foreground'da bo'lsa (student MEPT sahifasida)

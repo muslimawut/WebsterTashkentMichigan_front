@@ -642,7 +642,7 @@ const WritingTest = () => {
               <div className="relative mt-10">
                 <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold" style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)' }}>
                   <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />
-                  Secure &amp; Proctored
+                  Secure Test Session
                 </div>
               </div>
             </div>
@@ -681,20 +681,6 @@ const WritingTest = () => {
                   />
                   <p className="text-xs text-gray-400 mt-1.5">Must match your registration for an active test date.</p>
                 </div>
-              </div>
-
-              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3.5 mb-5">
-                <div className="flex items-center gap-2 mb-2.5">
-                  <svg className="w-4 h-4 text-amber-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 4.5h.008v.008H12V16.5z" />
-                  </svg>
-                  <p className="text-sm font-bold text-amber-900">Writing exam rules</p>
-                </div>
-                <ul className="space-y-1.5 text-xs leading-relaxed text-amber-900">
-                  <li className="flex gap-2"><span className="font-bold">•</span><span>Copy, cut, paste, and using text from external sources are not allowed.</span></li>
-                  <li className="flex gap-2"><span className="font-bold">•</span><span>Do not switch tabs or windows, and do not leave fullscreen.</span></li>
-                  <li className="flex gap-2"><span className="font-bold">•</span><span>Tab switches, focus loss, and leaving fullscreen are recorded.</span></li>
-                </ul>
               </div>
 
               {startError && (

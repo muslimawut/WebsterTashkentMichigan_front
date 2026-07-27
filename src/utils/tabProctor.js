@@ -122,11 +122,11 @@ Analyze the log and return the JSON verdict.`;
 const METRICA_IDENTITY = `- For Cambridge Metrica, question text, answer choices, reading passages, question numbers, section labels, selected answers, remaining time, scroll position and expanded/collapsed panels can all change and MUST be ignored.
 - Treat a page as allowed when the stable Metrica identity remains: metrica.cambridgemichigan.org, Content Player chrome, dark exam header/navigation, and the same general exam-shell structure. Grammar, listening and reading layouts may differ from one another and are all allowed when they remain inside that Metrica exam shell.`;
 
-// Writing sessiyasi — imtihon BIZNING o'zimizning sahifamizda (protoring.netlify.app/writing-test) topshiriladi.
-const WRITING_IDENTITY = `- This is the MEPT Writing test page, served from protoring.netlify.app (our OWN exam page). It IS an allowed page — NEVER treat it as an external site, an "external essay submission platform", or cheating.
+// Writing sessiyasi — imtihon BIZNING o'zimizning sahifamizda (mept.webster.uz/writing-test-online) topshiriladi.
+const WRITING_IDENTITY = `- This is the MEPT Writing test page, served from mept.webster.uz (our OWN exam page). It IS an allowed page — NEVER treat it as an external site, an "external essay submission platform", or cheating.
 - Allowed Writing identity: a light/white page headed "Your Essay" with the helper line "Write your essay below. Copy and paste are disabled.", a large single essay text area, a blue "Submit Essay" button, a top progress timeline ("Start … 60 minutes"), a dark announcement bar across the very top, and a camera picture-in-picture. Any snapshot with this layout is ALLOWED.
 - The essay text the student types, the amount of text, the remaining time and the scroll position all change constantly and MUST be ignored.
-- The domain protoring.netlify.app and the "Your Essay" editor ARE the exam itself. Only flag when a genuinely different site/app is shown (search engine, ChatGPT/AI chat, notes, messenger, another document, a phone screen, etc.).`;
+- The domain mept.webster.uz and the "Your Essay" editor ARE the exam itself. Only flag when a genuinely different site/app is shown (search engine, ChatGPT/AI chat, notes, messenger, another document, a phone screen, etc.).`;
 
 const buildScreenSystem = (kind) => `You are an AI exam proctor doing VISUAL page/tab verification.
 
@@ -253,7 +253,7 @@ export const analyzeScreens = async ({ references = [], snapshots = [], meta = {
     const contents = [];
     contents.push({
       text: kind === 'writing'
-        ? 'This is a Writing test. The allowed page is the MEPT "Your Essay" editor on protoring.netlify.app. Reference images below show other allowed exam pages; the Writing editor is allowed even if it is not among them:'
+        ? 'This is a Writing test. The allowed page is the MEPT "Your Essay" editor on mept.webster.uz. Reference images below show other allowed exam pages; the Writing editor is allowed even if it is not among them:'
         : 'ALLOWED reference pages — the student may ONLY be on pages that look like these:',
     });
     

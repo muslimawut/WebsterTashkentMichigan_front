@@ -10,7 +10,10 @@ import {
 // mikrofon va ekran ulashish TO'XTAMAYDI. Metrica imtihoni tugagach
 // ProctoringExam handoff qilgan streamlar shu yerda davom etadi (snapshot,
 // qisqa video-klip, davriy monitoring). Offline hook'ga tegmaymiz.
-const WRITING_APP_URL = 'https://protoring.netlify.app/writing-test-online';
+// exam_url — sessiya qaysi sahifada ketayotganini ko'rsatadi (ProctorMonitor shu
+// yerdagi "/writing-test" bo'lagiga qarab bo'limni aniqlaydi). Domen hardcode
+// qilinmaydi: hozirgi host (mept.webster.uz, localhost…) ishlatiladi.
+const WRITING_APP_URL = `${window.location.origin}/writing-test-online`;
 // Davriy ekran snapshoti — tez-tez, chunki student boshqa tab/ilovaga (Telegram va
 // h.k.) o'tsa, ekran-share kadrida ko'rinadi. blur/visibility hodisasi ushlamay
 // qolgan holatda ham 12s ichida dalil olinadi.
