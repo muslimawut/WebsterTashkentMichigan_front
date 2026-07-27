@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { safeJsonParse } from '../utils/sanitize';
 import ApiService from '../api/api';
-import { useWritingProctoring } from '../hooks/useWritingProctoring';
 import websterLogo from '../../logowhitewebster.png';
 
 // Article matnini paragraflarga ajratib chiqaradi.
@@ -66,12 +65,6 @@ const renderInstructions = (raw) => {
 const WritingTest = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const {
-    monitoringError,
-    startMonitoring,
-    finishMonitoring,
-    reportViolation,
-  } = useWritingProctoring();
 
   let savedCandidate = {};
   try {
@@ -129,16 +122,7 @@ const WritingTest = () => {
         fullName: fullName.trim(),
         passportId: passportId.trim(),
       };
-      // Media permission so'rovlari aynan user bosgan tugma ichida boshlanishi kerak.
-      await startMonitoring(candidate);
-
-      let res;
-      try {
-        res = await ApiService.writingStart(candidate.fullName, candidate.passportId);
-      } catch (error) {
-        await finishMonitoring();
-        throw error;
-      }
+      const res = await ApiService.writingStart(candidate.fullName, candidate.passportId);
       setSessionId(res.id);
       sessionIdRef.current = res.id;
       // prompt is an object
@@ -167,7 +151,7 @@ const WritingTest = () => {
       } else if (status === 500) {
         setStartError('Server error. Please try again or contact support if the issue persists.');
       } else {
-        setStartError(err?.message || monitoringError || 'Could not start monitoring. Please try again.');
+        setStartError('Something went wrong. Please try again.');
       }
     } finally {
       setStartLoading(false);
@@ -229,28 +213,12 @@ const WritingTest = () => {
 
     const preventAction = (e) => {
       e.preventDefault();
-      const eventTypes = {
-        copy: ['copy_attempt', 'Copy attempt during Writing'],
-        cut: ['cut_attempt', 'Cut attempt during Writing'],
-        paste: ['paste_attempt', 'Paste attempt during Writing'],
-        contextmenu: ['context_menu', 'Context menu opened during Writing'],
-      };
-      const violation = eventTypes[e.type];
-      if (violation) reportViolation(violation[0], violation[1]);
       return false;
     };
 
     const preventKeyboardShortcuts = (e) => {
       if ((e.ctrlKey || e.metaKey) && ['c', 'x', 'v', 'C', 'X', 'V'].includes(e.key)) {
         e.preventDefault();
-        const key = e.key.toLowerCase();
-        const eventTypes = {
-          c: ['copy_attempt', 'Copy keyboard shortcut during Writing'],
-          x: ['cut_attempt', 'Cut keyboard shortcut during Writing'],
-          v: ['paste_attempt', 'Paste keyboard shortcut during Writing'],
-        };
-        const violation = eventTypes[key];
-        reportViolation(violation[0], violation[1]);
         return false;
       }
     };
@@ -268,7 +236,7 @@ const WritingTest = () => {
       textarea.removeEventListener('contextmenu', preventAction);
       textarea.removeEventListener('keydown', preventKeyboardShortcuts);
     };
-  }, [reportViolation, testStarted]);
+  }, [testStarted]);
 
   // Save to localStorage on every text change (instant backup)
   useEffect(() => {
@@ -299,7 +267,6 @@ const WritingTest = () => {
   useEffect(() => {
     const handlePopState = () => {
       if (!isSubmitted && !hasSubmittedRef.current) {
-        reportViolation('back_attempt', 'Back button pressed during Writing');
         const confirmLeave = window.confirm(
           'Your essay will be automatically submitted if you go back. Do you want to continue?'
         );
@@ -320,7 +287,7 @@ const WritingTest = () => {
     return () => {
       window.removeEventListener('popstate', handlePopState);
     };
-  }, [isSubmitted, reportViolation]);
+  }, [isSubmitted]);
 
   // Detect tab switch, window blur, or leaving page
   useEffect(() => {
@@ -335,8 +302,7 @@ const WritingTest = () => {
         const newCount = mouseLeaveCountRef.current;
         setMouseLeaveCount(newCount);
         setShowMouseWarning(true);
-        reportViolation('tab_switch', 'Writing tab was hidden');
-        
+
         // Warning only — no auto-submit
         if (warningTimeoutRef.current) {
           clearTimeout(warningTimeoutRef.current);
@@ -366,7 +332,6 @@ const WritingTest = () => {
         const newCount = mouseLeaveCountRef.current;
         setMouseLeaveCount(newCount);
         setShowMouseWarning(true);
-        reportViolation('window_blur', 'Writing window lost focus');
 
         // Warning only — no auto-submit
         if (warningTimeoutRef.current) {
@@ -393,8 +358,7 @@ const WritingTest = () => {
         const newCount = mouseLeaveCountRef.current;
         setMouseLeaveCount(newCount);
         setShowMouseWarning(true);
-        reportViolation('fullscreen_exit', 'Fullscreen exited during Writing');
-        
+
         // Warning only — no auto-submit
         if (warningTimeoutRef.current) {
           clearTimeout(warningTimeoutRef.current);
@@ -434,7 +398,7 @@ const WritingTest = () => {
         clearTimeout(cooldownTimer);
       }
     };
-  }, [testStarted, isSubmitted, reportViolation]);
+  }, [testStarted, isSubmitted]);
 
   // Detect mouse leaving the screen completely OR going to edges in fullscreen
   useEffect(() => {
@@ -458,8 +422,7 @@ const WritingTest = () => {
           const newCount = mouseLeaveCountRef.current;
           setMouseLeaveCount(newCount);
           setShowMouseWarning(true);
-          reportViolation('mouse_edge', 'Mouse moved to browser controls during Writing');
-          
+
           // Warning only — no auto-submit
           // Auto hide warning after 5 seconds
           if (warningTimeoutRef.current) {
@@ -491,8 +454,7 @@ const WritingTest = () => {
         const newCount = mouseLeaveCountRef.current;
         setMouseLeaveCount(newCount);
         setShowMouseWarning(true);
-        reportViolation('mouse_leave', 'Mouse left the Writing exam window');
-        
+
         // Warning only — no auto-submit
         if (warningTimeoutRef.current) {
           clearTimeout(warningTimeoutRef.current);
@@ -520,7 +482,7 @@ const WritingTest = () => {
         clearTimeout(cooldownTimer);
       }
     };
-  }, [testStarted, isSubmitted, reportViolation]);
+  }, [testStarted, isSubmitted]);
 
   // Auto-submit function
   const handleAutoSubmit = async (reason) => {
@@ -547,8 +509,6 @@ const WritingTest = () => {
         console.error('Auto-submit API error:', e);
       }
     }
-
-    await finishMonitoring();
 
     // A violation occurred if reason mentions a repeated count or fullscreen/tab/mouse rule
     const isCheating = /times|suspicious|edges|focus lost|switched|fullscreen/i.test(reason)
@@ -603,8 +563,6 @@ const WritingTest = () => {
         console.error('Submit error:', e);
       }
     }
-
-    await finishMonitoring();
 
     setShowSuccessModal(true);
     setTimeout(() => {
