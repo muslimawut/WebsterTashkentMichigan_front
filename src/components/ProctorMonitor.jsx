@@ -219,6 +219,12 @@ const sessionKindMeta = {
   metrica: { label: 'Metrica Cambridge', className: 'is-metrica' },
 };
 
+// Backend `ai_analyzed` bilan AI tahlili o'tkazilgan sessiyalarni belgilaydi —
+// ro'yxatda qaysilari hali ko'rilmaganini darrov ajratish uchun.
+const isAiAnalyzed = (session) => Boolean(
+  pick(session, ['ai_analyzed', 'aiAnalyzed', 'analyzed'], false)
+);
+
 // Backend bo'lmasa — student sessiyasi localStorage'ga yozgan yig'ilgan logdan o'qiymiz
 const readLocalSession = (id) => {
   try {
@@ -753,6 +759,9 @@ const ProctorMonitor = () => {
                       <span className="pm-list-heading">
                         <span className="pm-list-name">{pick(s, ['full_name', 'name'], id)}</span>
                         <span className={`pm-session-badge ${kindMeta.className}`}>{kindMeta.label}</span>
+                        <span className={`pm-session-badge ${isAiAnalyzed(s) ? 'is-analyzed' : 'is-unanalyzed'}`}>
+                          {isAiAnalyzed(s) ? '✓ AI analyzed' : 'Not analyzed'}
+                        </span>
                       </span>
                       <span className="pm-list-meta">
                         {passportId && <span>Passport: {passportId}</span>}
@@ -1061,6 +1070,8 @@ const CSS = `
 .pm-session-badge{display:inline-flex;align-items:center;min-height:20px;padding:2px 8px;border:1px solid;border-radius:999px;font-size:9.5px;font-weight:850;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;}
 .pm-session-badge.is-writing{color:#d8b4fe;background:rgba(168,85,247,.13);border-color:rgba(192,132,252,.38);}
 .pm-session-badge.is-metrica{color:#7dd3fc;background:rgba(14,165,233,.12);border-color:rgba(56,189,248,.35);}
+.pm-session-badge.is-analyzed{color:#6ee7b7;background:rgba(16,185,129,.13);border-color:rgba(52,211,153,.38);}
+.pm-session-badge.is-unanalyzed{color:#93a7c2;background:rgba(148,163,184,.1);border-color:rgba(148,163,184,.3);}
 .pm-list-meta{display:flex;align-items:center;flex-wrap:wrap;gap:6px;font-size:11.5px;font-weight:500;color:#8299bb;}
 .pm-list-separator{color:#415574;}
 .pm-list-id{flex-shrink:0;font-size:12px;color:#67809f;font-weight:500;}
