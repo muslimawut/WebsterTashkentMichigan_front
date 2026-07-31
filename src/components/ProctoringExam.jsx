@@ -79,6 +79,14 @@ const SIDE_TO_SIDE_WINDOW_MS = 180000;         // chap-o'ng pattern uchun 3 min 
 const SIDE_TO_SIDE_MIN_SPAN_MS = 120000;       // kamida 2 min pattern
 const SIDE_TO_SIDE_MIN_SWITCHES = 5;
 
+// "Shubhali" (suspicious) statusi — cheating EMAS, tekshiruvchi hal qiladi.
+// 7-10 s oralig'idagi qarash 10 s chegarasiga yetmaydi, ya'ni o'zi buzilish emas.
+// Lekin bitta tomonga qayta-qayta takrorlansa (1-2 tasi normal, 3-tasidan boshlab)
+// bu holat proctor ko'rib chiqishi uchun alohida belgilanadi.
+const LONG_GLANCE_MIN_MS = 7000;               // qarash kamida 7 s (10 s dan kam)
+const LONG_GLANCE_WINDOW_MS = 180000;          // 3 min rolling window
+const LONG_GLANCE_MIN_COUNT = 3;               // 3-tasidan boshlab shubhali
+
 // Shubhali lahzada ekran video-klip
 const SEGMENT_MS = 10000;           // har bir violation klipi taxminan 10 sekund
 const MIN_CLIP_MS = 8000;           // finish paytida ham klip bundan kalta bo'lmaydi
@@ -539,10 +547,10 @@ const ProctoringExam = () => {
   /* ── Shubhali/cheating hodisa: log + snapshot + video-klip ─
      Bir xil event_id: log, skreenshot va klip o'sha id bilan yuboriladi —
      backend qaysi cheating hodisasiga tegishli ekanini aniq bog'laydi. */
-  const flagCheating = useCallback((type, message) => {
+  const flagEvent = useCallback((type, message, severity) => {
     const eventId = `evt_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     // Eventni avval yaratamiz; screenshot/clip uploadlari shu event_id'ga ulanadi.
-    logEvent(type, message, 'warning', { id: eventId });
+    logEvent(type, message, severity, { id: eventId });
     const img = captureSnapshot(message, { silent: true, eventId }); // skrinshot (o'sha id bilan)
     if (img) {
       setEvents((prev) => prev.map((event) => (
@@ -551,6 +559,16 @@ const ProctoringExam = () => {
     }
     requestClip(message, eventId); // joriy segment klip bo'lib chiqadi (o'sha id)
   }, [captureSnapshot, logEvent, requestClip]);
+
+  const flagCheating = useCallback((type, message) => (
+    flagEvent(type, message, 'warning')
+  ), [flagEvent]);
+
+  // Shubhali holat: dalil (skrinshot + klip) baribir yig'iladi, lekin severity
+  // 'warning' emas — warnings hisobiga kirmaydi va cheating deb belgilanmaydi.
+  const flagSuspicious = useCallback((type, message) => (
+    flagEvent(type, message, 'info')
+  ), [flagEvent]);
 
   /* ── Qo'l natijalarini baholash (ko'tarilgan qo'lni aniqlash) ─ */
   const handleHandResults = useCallback((res) => {
@@ -623,7 +641,8 @@ const ProctoringExam = () => {
       // Bitta <3s qarash normal holat; sustained episode allaqachon flag qilingan.
       if (dur < QUICK_GLANCE_IGNORE_MS || wasFlagged || directionAtEnd === 'face_turned') return;
 
-      const cutoff = nowT - SIDE_TO_SIDE_WINDOW_MS;
+      // Tarix eng uzun oynani qoplashi kerak (side-to-side / uzoq qarash patterni).
+      const cutoff = nowT - Math.max(SIDE_TO_SIDE_WINDOW_MS, LONG_GLANCE_WINDOW_MS);
       const history = [
         ...glanceHistoryRef.current.filter((item) => item.time >= cutoff),
         { time: nowT, duration: dur, direction: directionAtEnd },
@@ -669,9 +688,33 @@ const ProctoringExam = () => {
         glanceHistoryRef.current = [];
         awayCountRef.current = 0;
         setAwayCount(0);
+        return;
+      }
+
+      // SHUBHALI: bir tomonga 7-10 s dan qarash. Bittasi-ikkitasi normal (o'ylash,
+      // yozuvni ko'chirish), 3-tasidan boshlab proctor ko'rib chiqishi kerak.
+      // Bu cheating deb belgilanmaydi — yakuniy qarorni tekshiruvchi qabul qiladi.
+      const longGlances = history.filter((item) => (
+        item.direction === directionAtEnd
+        && item.duration >= LONG_GLANCE_MIN_MS
+        && item.duration < SUSTAINED_LOOK_AWAY_MS
+        && item.time >= nowT - LONG_GLANCE_WINDOW_MS
+      ));
+      if (directionAtEnd !== 'unknown' && longGlances.length >= LONG_GLANCE_MIN_COUNT) {
+        const longest = Math.round(Math.max(...longGlances.map((item) => item.duration)) / 1000);
+        flagSuspicious(
+          'gaze_suspicious',
+          `Suspicious: ${longGlances.length} long glances ${directionAtEnd} (7-10s each, longest ${longest}s) — needs proctor review`
+        );
+        // Hisoblangan qarashlarni tarixdan chiqaramiz — har keyingi qarashda
+        // qayta-qayta yozilmasin, yangi 3 talik to'plansa yana belgilanadi.
+        const counted = new Set(longGlances.map((item) => item.time));
+        glanceHistoryRef.current = history.filter((item) => !counted.has(item.time));
+        awayCountRef.current = glanceHistoryRef.current.length;
+        setAwayCount(awayCountRef.current);
       }
     }
-  }, [flagCheating]);
+  }, [flagCheating, flagSuspicious]);
 
   const evalNoFace = useCallback((missing, nowT) => {
     if (!missing) {

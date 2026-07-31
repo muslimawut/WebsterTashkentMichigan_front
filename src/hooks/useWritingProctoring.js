@@ -8,8 +8,10 @@ import {
 } from '../utils/proctorMediaBridge';
 
 // Writing sessiyasini monitoring ro'yxatida Metrica sessiyasidan ajratish uchun
-// exam_url sifatida Writing route'ining o'zi yuboriladi.
-const WRITING_APP_URL = 'https://protoring.netlify.app/writing-test';
+// exam_url sifatida Writing route'ining o'zi yuboriladi. Domen qo'lda yozilmaydi —
+// aks holda deploy domeni o'zgarganda eskisi qolib ketadi (protoring.netlify.app
+// muammosi shundan chiqqandi). Productionда bu https://mept.webster.uz/writing-test.
+const WRITING_APP_URL = `${window.location.origin}/writing-test`;
 // Davriy (background) snapshot — kamdan-kam. Qoida buzilganda (tab almashish,
 // blur, fullscreen chiqish, sichqoncha chetga) darhol alohida screenshot olinadi,
 // shuning uchun davriy intervalni katta qilsak ham dalil yo'qolmaydi.

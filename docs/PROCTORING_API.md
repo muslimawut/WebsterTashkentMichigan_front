@@ -310,7 +310,7 @@ MIDDLEWARE = [
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    "https://protoring.netlify.app",
+    "https://mept.webster.uz",
 ]
 
 # Only if the frontend sends cookies/session auth (withCredentials: true — it does).
@@ -320,7 +320,7 @@ CORS_ALLOW_CREDENTIALS = True
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    "https://protoring.netlify.app",
+    "https://mept.webster.uz",
 ]
 ```
 
@@ -336,7 +336,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "https://protoring.netlify.app"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "https://mept.webster.uz"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -348,7 +348,7 @@ app.add_middleware(
 ```js
 import cors from "cors";
 app.use(cors({
-  origin: ["http://localhost:5173", "http://127.0.0.1:5173", "https://protoring.netlify.app"],
+  origin: ["http://localhost:5173", "http://127.0.0.1:5173", "https://mept.webster.uz"],
   credentials: true,
 }));
 ```

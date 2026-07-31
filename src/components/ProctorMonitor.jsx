@@ -127,6 +127,13 @@ const cheatingReviewPayload = (sessionId, review) => ({
   })),
 });
 
+// "Shubhali" — cheating emas: dalil yig'iladi, lekin qarorni proctor qabul qiladi.
+// Severity 'warning' EMAS (warnings hisobiga kirmaydi), shuning uchun type bo'yicha
+// aniqlanadi.
+const SUSPICIOUS_TYPES = new Set(['gaze_suspicious']);
+
+const isSuspiciousEvent = (event) => SUSPICIOUS_TYPES.has(String(event?.type || '').toLowerCase());
+
 const GAZE_CHEATING_TYPES = new Set([
   'gaze_away',
   'gaze_away_long',
@@ -956,10 +963,16 @@ const ProctorMonitor = () => {
               ) : (
                 <ul className="pm-timeline">
                   {events.map((ev, i) => (
-                    <li key={i} className={ev.severity === 'warning' ? 'is-warn' : ''}>
+                    <li
+                      key={i}
+                      className={isSuspiciousEvent(ev) ? 'is-suspicious' : (ev.severity === 'warning' ? 'is-warn' : '')}
+                    >
                       <span className="pm-dot" />
                       <div>
-                        <p className="pm-msg">{ev.message || ev.type}</p>
+                        <p className="pm-msg">
+                          {isSuspiciousEvent(ev) && <span className="pm-susp-badge">Suspicious · review</span>}
+                          {ev.message || ev.type}
+                        </p>
                         {ev.image && (
                           <button
                             type="button"
@@ -1116,6 +1129,9 @@ const CSS = `
 .pm-timeline li.is-warn .pm-dot{background:#f87171;box-shadow:0 0 10px rgba(248,113,113,.7);}
 .pm-msg{font-size:14px;color:#c3d4ee;line-height:1.4;}
 .pm-timeline li.is-warn .pm-msg{color:#fecaca;font-weight:600;}
+.pm-timeline li.is-suspicious .pm-dot{background:#fbbf24;box-shadow:0 0 10px rgba(251,191,36,.7);}
+.pm-timeline li.is-suspicious .pm-msg{color:#fde3a7;font-weight:600;}
+.pm-susp-badge{display:inline-block;margin-right:8px;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#3a2b05;background:#fbbf24;vertical-align:1px;}
 .pm-time{font-size:11.5px;color:#67809f;margin-top:3px;}
 .pm-shot{display:block;margin-top:8px;width:260px;max-width:100%;padding:0;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,.14);background:#020711;cursor:zoom-in;text-align:left;}
 .pm-shot:hover{border-color:rgba(125,211,252,.7);box-shadow:0 10px 28px -15px rgba(56,189,248,.7);}
