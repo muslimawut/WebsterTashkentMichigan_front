@@ -1341,11 +1341,33 @@ const ProctoringExam = () => {
     let cancelled = false;
     let landmarker = null;    // HandLandmarker
     let faceLandmarker = null;
-    let raf = null;
-    let lastVideoTime = -1;
-    let lastDetect = 0;
+    let worker = null;
+    let fallbackTimer = null;
+    let detecting = false;
+    let swapping = false;
     let tick = 0;
-    const DETECT_INTERVAL = 80; // ms → ~12 fps (60fps o'rniga — thread bo'g'ilmaydi)
+    let errorStreak = 0;
+    let visionModule = null;
+    let fileResolver = null;
+    let activeDelegate = 'GPU';
+
+    // MUHIM: Metrica yangi tabda ochiladi va MEPT sahifasi fonga tushadi.
+    // requestAnimationFrame fon tabda BUTUNLAY to'xtaydi — ilgari shu sababli
+    // imtihon davomida yuz/gaze tahlili umuman ishlamay qolar edi (ikkinchi odam
+    // ham aniqlanmasdi). Endi detektsiyani davriy snapshot bilan bir xil usulda —
+    // throttle qilinmaydigan Worker timer boshqaradi, kadr esa canvas orqali olinadi.
+    const DETECT_INTERVAL_MS = 80;          // ~12 fps — MEPT oldinda
+    const DETECT_INTERVAL_HIDDEN_MS = 250;  // ~4 fps — MEPT fonda (student Metrica tabida)
+    const DETECT_MAX_W = 1280;              // kamera 1280x720; uzoqdagi 2-yuz yo'qolmasin
+    const detectWorkerCode = `let id; onmessage = (e) => {
+      if (e.data && e.data.type === 'start') { clearInterval(id); id = setInterval(() => postMessage('tick'), e.data.interval); }
+      else if (e.data && e.data.type === 'stop') { clearInterval(id); }
+    };`;
+    const frameCanvas = document.createElement('canvas');
+    // getImageData chaqirilmaydi — willReadFrequently qo'ymaymiz, aks holda
+    // canvas software rejimga tushib GPU'ga yuklash sekinlashadi.
+    const frameCtx = frameCanvas.getContext('2d');
+
     const createHand = async (vision, resolver, delegate) =>
       vision.HandLandmarker.createFromOptions(resolver, {
         baseOptions: {
@@ -1370,23 +1392,70 @@ const ProctoringExam = () => {
         outputFaceBlendshapes: true, // ko'z yo'nalishi (eyeLookIn/Out/Down) uchun
       });
 
-    const loop = () => {
-      if (cancelled) return;
-      const video = videoRef.current;
-      const t = performance.now();
-      // ~12 fps'ga cheklaymiz — 60fps'da ikki modelni ishlatish thread'ni qotiradi
-      if (video && video.readyState >= 2 && t - lastDetect >= DETECT_INTERVAL && video.currentTime !== lastVideoTime) {
-        lastDetect = t;
-        lastVideoTime = video.currentTime;
-        tick++;
-        // Yuz — har tick (gaze/kalibratsiya uchun muhim)
-        try { if (faceLandmarker) handleFaceResults(faceLandmarker.detectForVideo(video, t)); } catch { /* skip frame */ }
-        // Qo'l — har 2-tick (~6 fps yetarli, yuk yarmiga tushadi)
-        if (tick % 2 === 0) {
-          try { if (landmarker) handleHandResults(landmarker.detectForVideo(video, t + 1)); } catch { /* skip frame */ }
-        }
+    // Fon tabda GPU (WebGL) konteksti to'xtab/yo'qolib qolishi mumkin. Bir necha
+    // ketma-ket xatodan keyin CPU delegate'ga o'tamiz — aks holda monitoring
+    // hech qanday belgi bermay jimgina o'lib qoladi.
+    const swapToCpu = async () => {
+      if (swapping || cancelled || !visionModule || !fileResolver) return;
+      swapping = true;
+      activeDelegate = 'CPU';
+      try {
+        const [handCpu, faceCpu] = await Promise.all([
+          createHand(visionModule, fileResolver, 'CPU').catch(() => null),
+          createFace(visionModule, fileResolver, 'CPU').catch(() => null),
+        ]);
+        if (cancelled) { handCpu?.close?.(); faceCpu?.close?.(); return; }
+        landmarker?.close?.();
+        faceLandmarker?.close?.();
+        landmarker = handCpu;
+        faceLandmarker = faceCpu;
+        errorStreak = 0;
+      } finally {
+        swapping = false;
       }
-      raf = requestAnimationFrame(loop);
+    };
+
+    const detectOnce = () => {
+      if (cancelled || detecting || swapping) return;
+      const video = videoRef.current;
+      if (!video || video.readyState < 2 || !video.videoWidth || !frameCtx) return;
+      detecting = true;
+      try {
+        // Kamera kadrini canvasga ko'chiramiz: fon tabda video elementi ekranga
+        // chizilmaydi, canvas esa MediaPipe'ga har safar yangi kadr beradi.
+        const scale = Math.min(1, DETECT_MAX_W / video.videoWidth);
+        const w = Math.max(1, Math.round(video.videoWidth * scale));
+        const h = Math.max(1, Math.round(video.videoHeight * scale));
+        if (frameCanvas.width !== w || frameCanvas.height !== h) {
+          frameCanvas.width = w;
+          frameCanvas.height = h;
+        }
+        frameCtx.drawImage(video, 0, 0, w, h);
+        const t = performance.now();
+        tick += 1;
+        // Yuz — har tick (gaze/kalibratsiya va 2-yuz uchun muhim)
+        if (faceLandmarker) handleFaceResults(faceLandmarker.detectForVideo(frameCanvas, t));
+        // Qo'l — har 2-tick (yuk yarmiga tushadi)
+        if (tick % 2 === 0 && landmarker) handleHandResults(landmarker.detectForVideo(frameCanvas, t + 1));
+        errorStreak = 0;
+      } catch {
+        errorStreak += 1;
+        if (errorStreak >= 10 && activeDelegate === 'GPU') swapToCpu();
+      } finally {
+        detecting = false;
+      }
+    };
+
+    // MEPT yashiringanda kadr tezligini pasaytiramiz (CPU tejaladi), lekin
+    // detektsiya TO'XTAMAYDI — cheating aynan o'sha paytda sodir bo'ladi.
+    const applyInterval = () => {
+      const interval = document.hidden ? DETECT_INTERVAL_HIDDEN_MS : DETECT_INTERVAL_MS;
+      if (worker) {
+        worker.postMessage({ type: 'start', interval });
+      } else if (fallbackTimer !== null) {
+        clearInterval(fallbackTimer);
+        fallbackTimer = setInterval(detectOnce, interval);
+      }
     };
 
     const setup = async () => {
@@ -1396,6 +1465,8 @@ const ProctoringExam = () => {
         const resolver = await vision.FilesetResolver.forVisionTasks(
           `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/wasm`
         );
+        visionModule = vision;
+        fileResolver = resolver;
         // Ikkala modelni PARALLEL yuklaymiz (ketma-ket emas — 2 barobar tez)
         const [handRes, faceRes] = await Promise.allSettled([
           createHand(vision, resolver, 'GPU'),
@@ -1407,12 +1478,25 @@ const ProctoringExam = () => {
         faceLandmarker = faceRes.status === 'fulfilled'
           ? faceRes.value
           : await createFace(vision, resolver, 'CPU').catch(() => null);
+        if (faceRes.status !== 'fulfilled' || handRes.status !== 'fulfilled') activeDelegate = 'CPU';
         if (cancelled) { landmarker?.close?.(); faceLandmarker?.close?.(); return; }
         // Yuz modeli yuklanmasa — kalibratsiyasiz davom etamiz (imtihon bloklanmasin)
         if (!faceLandmarker) { setCalibrating(false); }
         setHandStatus('ready');
         logEvent('monitoring_ready', 'Monitoring checks enabled', 'info');
-        loop();
+
+        // Worker timer — fon tabda ham throttle qilinmaydi (rAF esa to'xtaydi).
+        try {
+          const url = URL.createObjectURL(new Blob([detectWorkerCode], { type: 'application/javascript' }));
+          worker = new Worker(url);
+          URL.revokeObjectURL(url);
+          worker.onmessage = detectOnce;
+        } catch {
+          // Worker bo'lmasa — oddiy interval (fon tabda sekinroq bo'lishi mumkin)
+          fallbackTimer = setInterval(detectOnce, DETECT_INTERVAL_MS);
+        }
+        applyInterval();
+        document.addEventListener('visibilitychange', applyInterval);
       } catch {
         if (!cancelled) { setHandStatus('error'); setCalibrating(false); }
       }
@@ -1421,7 +1505,12 @@ const ProctoringExam = () => {
     setup();
     return () => {
       cancelled = true;
-      if (raf) cancelAnimationFrame(raf);
+      document.removeEventListener('visibilitychange', applyInterval);
+      if (worker) {
+        try { worker.postMessage({ type: 'stop' }); worker.terminate(); } catch { /* ignore */ }
+        worker = null;
+      }
+      if (fallbackTimer !== null) { clearInterval(fallbackTimer); fallbackTimer = null; }
       landmarker?.close?.();
       faceLandmarker?.close?.();
       setHandStatus('off');

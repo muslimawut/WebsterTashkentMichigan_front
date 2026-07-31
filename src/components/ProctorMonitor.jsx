@@ -271,6 +271,7 @@ const ProctorMonitor = () => {
   const [events, setEvents] = useState([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadedAt, setLoadedAt] = useState(null);
   const [idInput, setIdInput] = useState(sessionId);
   const [mediaPreview, setMediaPreview] = useState(null);
 
@@ -375,7 +376,7 @@ const ProctorMonitor = () => {
     return () => { cancelled = true; };
   }, [sessionId]);
 
-  /* Tanlangan sessiyani davriy yuklab turamiz */
+  /* Sessiyani yuklaymiz — sessiya ochilganda bir marta, keyin faqat Refresh bosilganda */
   const load = useCallback(async () => {
     if (!sessionId) return;
 
@@ -387,10 +388,11 @@ const ProctorMonitor = () => {
         setSession(local.meta);
         setEvents(local.events);
         setError('');
-        return local.meta?.status || null;
+        setLoadedAt(new Date());
+        return;
       }
       setError('No local log found for this session.');
-      return null;
+      return;
     }
 
     setLoading(true);
@@ -428,10 +430,10 @@ const ProctorMonitor = () => {
         setSession(data);
         setEvents(completeEvents);
         setError('');
-        return pick(data, ['status', 'exam_status', 'state'], null);
+        setLoadedAt(new Date());
+        return;
       }
-      // Session mavjud, lekin event hali yo'q bo'lishi mumkin. Statusni tashlab
-      // yubormaymiz: ayniqsa completed session shu yerda tan olinsa polling to'xtaydi.
+      // Session mavjud, lekin event hali yo'q bo'lishi mumkin — bu ham to'g'ri javob.
       const remoteStatus = pick(data, ['status', 'exam_status', 'state'], null);
       const remoteId = pick(data, ['id', 'session_id'], null);
       if (remoteStatus || remoteId) {
@@ -439,7 +441,8 @@ const ProctorMonitor = () => {
         setSession(data);
         setEvents(local?.events || []);
         setError('');
-        return remoteStatus;
+        setLoadedAt(new Date());
+        return;
       }
       throw new Error('empty'); // backend bo'sh — lokal logga tushamiz
     } catch {
@@ -449,35 +452,35 @@ const ProctorMonitor = () => {
         setSession(local.meta);
         setEvents(local.events);
         setError('');
-        return local.meta?.status || null;
+        setLoadedAt(new Date());
+        return;
       }
       setError('No data found for this session (backend not ready and no local log).');
-      return null;
     } finally {
       setLoading(false);
     }
   }, [sessionId, loadLocal]);
 
+  // Sessiya ochilganda /proctoring/sessions/{id} ga ATIGI BITTA request ketadi.
+  // Yangilash faqat qo'lda — header'dagi Refresh tugmasi orqali.
+  // Ref StrictMode'dagi ikkilangan mount'da ikkinchi requestni to'sib qoladi;
+  // ro'yxatga qaytilganda (sessionId bo'shaydi) tozalanadi, shunda o'sha
+  // sessiyani qayta ochish yangi request beradi.
+  const loadedSessionRef = useRef(null);
   useEffect(() => {
-    if (!sessionId) return;
-    let cancelled = false;
-    let timer = null;
-
-    const poll = async () => {
-      const nextStatus = await load();
-      if (cancelled) return;
-      const normalized = String(nextStatus || '').toLowerCase();
-      // Tugagan sessiya o'zgarmaydi — ortiqcha network request yubormaymiz.
-      if (normalized === 'completed' || normalized === 'finished') return;
-      timer = setTimeout(poll, 5000);
-    };
-
-    poll();
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-    };
+    if (!sessionId) {
+      loadedSessionRef.current = null;
+      return;
+    }
+    if (loadedSessionRef.current === sessionId) return;
+    loadedSessionRef.current = sessionId;
+    load();
   }, [sessionId, load]);
+
+  const refresh = useCallback(() => {
+    if (loading) return;
+    load();
+  }, [load, loading]);
 
   // Unmount'da klip objectURL'larini tozalaymiz
   useEffect(() => () => {
@@ -487,7 +490,6 @@ const ProctorMonitor = () => {
 
   const warnings = session ? pick(session, ['warnings', 'warning_count'], events.filter((e) => e.severity === 'warning').length) : 0;
   const status = session ? pick(session, ['status', 'exam_status', 'state'], '—') : '—';
-  const pollingStopped = ['completed', 'finished'].includes(String(status).toLowerCase());
   const student = session ? pick(session, ['full_name', 'student', 'name'], '') : '';
   const passport = session ? pick(session, ['passport_id', 'passport'], '') : '';
 
@@ -647,8 +649,11 @@ const ProctorMonitor = () => {
         const savedReview = {
           ...review,
           flagged: (review.flagged || []).map((item) => {
-            // Gaze evidence allaqachon activity eventidagi media bilan bog'langan.
-            if (GAZE_CHEATING_TYPES.has(item.type)) return item;
+            // Gaze evidence allaqachon activity eventidagi media bilan bog'langan
+            // (ular index'siz keladi). Vision natijalari esa — jumladan kamerada
+            // ikkinchi odam topilgan `second_face` — snapshot index'iga ega, ular
+            // shu index bo'yicha rasm/klipga bog'lanadi.
+            if (item.index == null) return item;
             const shot = shots[item.index];
             const shotTime = new Date(shot?.time || item.time || 0).getTime();
             const linkedEvent = eventShots
@@ -699,9 +704,16 @@ const ProctorMonitor = () => {
         <h1>Proctor Monitor</h1>
         <span className="pm-live">
           {!sessionId
-            ? 'Session list · no polling'
-            : (loading ? 'Refreshing…' : (pollingStopped ? 'Completed · polling stopped' : 'Live · every 5s'))}
+            ? 'Session list'
+            : (loading
+              ? 'Refreshing…'
+              : (loadedAt ? `Updated ${fmtTime(loadedAt)}` : 'Manual refresh'))}
         </span>
+        {sessionId && (
+          <button className="pm-refresh" onClick={refresh} disabled={loading}>
+            {loading ? '↻ Refreshing…' : '↻ Refresh'}
+          </button>
+        )}
       </header>
 
       <main className="pm-main">
@@ -929,7 +941,7 @@ const ProctorMonitor = () => {
                       })}
                     </div>
                   ) : (
-                    <p className="pm-empty">No off-page snapshots — all on allowed pages.</p>
+                    <p className="pm-empty">No violations — allowed pages only, and no second person in the camera view.</p>
                   )}
                 </div>
               )}
@@ -1015,6 +1027,9 @@ const CSS = `
 .pm-back{color:#9fb6d6;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);padding:8px 14px;border-radius:11px;font-size:14px;font-weight:600;cursor:pointer;}
 .pm-back:hover{color:#fff;background:rgba(255,255,255,.1);}
 .pm-live{font-size:12px;font-weight:700;color:#5ff0b6;}
+.pm-refresh{color:#cfe2ff;background:rgba(96,165,250,.14);border:1px solid rgba(96,165,250,.34);padding:8px 14px;border-radius:11px;font-size:13px;font-weight:700;cursor:pointer;}
+.pm-refresh:hover:not(:disabled){color:#fff;background:rgba(96,165,250,.24);}
+.pm-refresh:disabled{opacity:.55;cursor:not-allowed;}
 .pm-main{max-width:1100px;margin:0 auto;padding:24px 22px 60px;}
 .pm-picker{display:flex;gap:10px;margin-bottom:22px;}
 .pm-picker input{flex:1;background:rgba(255,255,255,.04);border:1.5px solid rgba(255,255,255,.1);border-radius:12px;padding:11px 14px;color:#eef4ff;font-size:14px;outline:none;}
