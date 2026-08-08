@@ -20,6 +20,18 @@ const Spinner = () => (
   </svg>
 );
 
+// Backend ro'yxatdan o'tishda ikkala holatda ham bir xil javob qaytaradi
+// ("If the registration details are eligible, an activation email has been sent."),
+// shuning uchun hisob yangi yoki allaqachon bor ekanini javobdan bilib bo'lmaydi.
+// Kod kiritish uchun 5 daqiqa beramiz — kirmasa, hisob bor deb Sign In'ga qaytaramiz.
+const ACTIVATION_WINDOW_MS = 5 * 60 * 1000;
+
+const formatCountdown = (totalSeconds) => {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+};
+
 const AuthPage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -51,6 +63,9 @@ const AuthPage = () => {
   const [passwordErrors, setPasswordErrors] = useState([]);
   const [passportError, setPassportError] = useState('');
   const [loading, setLoading] = useState(false);
+  // Tasdiqlash kodi uchun qolgan vaqt (timestamp + har soniyada yangilanadigan hisob)
+  const [activationDeadline, setActivationDeadline] = useState(null);
+  const [secondsLeft, setSecondsLeft] = useState(0);
 
   // Scroll to top when page opens
   React.useEffect(() => {
@@ -72,6 +87,9 @@ const AuthPage = () => {
           lastName: pending.lastName || '',
           phone: pending.phone || '',
         }));
+        // Muddat sahifa yangilanganda ham davom etadi; allaqachon o'tgan bo'lsa
+        // quyidagi countdown effekti darhol Sign In'ga qaytaradi.
+        setActivationDeadline(pending.expiresAt || Date.now() + ACTIVATION_WINDOW_MS);
       }
     } catch {
       // noto'g'ri JSON bo'lsa e'tiborsiz qoldiramiz
@@ -111,6 +129,49 @@ const AuthPage = () => {
       default: toast(formattedMessage, options);
     }
   };
+
+  // 5 daqiqa ichida kod kiritilmadi — demak bu email bilan hisob allaqachon mavjud
+  // (backend yangi foydalanuvchiga kod yuboradi, mavjudiga esa yubormaydi).
+  const expireActivation = React.useCallback(() => {
+    localStorage.removeItem('pendingActivation');
+    setActivationDeadline(null);
+    setSecondsLeft(0);
+    setRegistrationComplete(false);
+    setSignUpStep(1);
+    setSelectedDegree('');
+    setActiveTab('signin');
+    // Kiritilgan emailni Sign In formasiga oldindan to'ldiramiz
+    setFormData((prev) => ({
+      ...prev,
+      signInEmail: prev.email,
+      signInPassword: '',
+      verificationCode: '',
+    }));
+    showNotification(
+      'You already have an account with these details. Please sign in instead.',
+      'info'
+    );
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Qolgan vaqtni har soniyada yangilab turadi
+  React.useEffect(() => {
+    if (!activationDeadline) return;
+
+    const tick = () => {
+      const remaining = activationDeadline - Date.now();
+      if (remaining <= 0) {
+        expireActivation();
+        return;
+      }
+      setSecondsLeft(Math.ceil(remaining / 1000));
+    };
+
+    tick();
+    const intervalId = setInterval(tick, 1000);
+    return () => clearInterval(intervalId);
+  }, [activationDeadline, expireActivation]);
 
 
   // Kirill / rus harflarini olib tashlaydi (faqat lotin matn qoladi)
@@ -267,14 +328,17 @@ const AuthPage = () => {
       // If registration is successful (200), show verification code input
       if (response) {
         // Refresh'da yo'qolmasligi uchun "tasdiqlash kutilmoqda" holatini saqlaymiz
+        const expiresAt = Date.now() + ACTIVATION_WINDOW_MS;
         localStorage.setItem('pendingActivation', JSON.stringify({
           email: formData.email,
           firstName: formData.firstName,
           lastName: formData.lastName,
           phone: formData.phone,
           degree: selectedDegree,
+          expiresAt,
         }));
         setRegistrationComplete(true);
+        setActivationDeadline(expiresAt);
         showNotification('Registration successful! A verification code has been sent to your email.', 'success');
         // Scroll to top smoothly
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -326,8 +390,9 @@ const AuthPage = () => {
       localStorage.setItem('userEmail', formData.email);
       localStorage.removeItem('currentPage'); // Clear current page
 
-      // Tasdiqlash tugadi — pending holatni o'chiramiz
+      // Tasdiqlash tugadi — pending holatni va taymerni o'chiramiz
       localStorage.removeItem('pendingActivation');
+      setActivationDeadline(null);
 
       showNotification('Account activated successfully! Redirecting...', 'success');
 
@@ -434,6 +499,7 @@ const AuthPage = () => {
                         setSignUpStep(1);
                         setRegistrationComplete(false);
                         setSelectedDegree('');
+                        setActivationDeadline(null);
                         localStorage.removeItem('pendingActivation');
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                       }}
@@ -450,6 +516,7 @@ const AuthPage = () => {
                         setSignUpStep(1);
                         setRegistrationComplete(false);
                         setSelectedDegree('');
+                        setActivationDeadline(null);
                         localStorage.removeItem('pendingActivation');
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                       }}
@@ -935,6 +1002,23 @@ const AuthPage = () => {
                               <p className="text-xs text-gray-600 mt-3">
                                 Check your email inbox for the 6-digit verification code
                               </p>
+
+                              {activationDeadline && (
+                                <div className="mt-4 flex items-center justify-center gap-2 text-sm">
+                                  <svg
+                                    className={`w-4 h-4 ${secondsLeft <= 60 ? 'text-red-600' : 'text-[#024890]'}`}
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                  >
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                  <span className={`font-semibold tabular-nums ${secondsLeft <= 60 ? 'text-red-600' : 'text-[#024890]'}`}>
+                                    {formatCountdown(secondsLeft)}
+                                  </span>
+                                  <span className="text-gray-600">left to confirm</span>
+                                </div>
+                              )}
                             </div>
 
                             <button
@@ -946,17 +1030,6 @@ const AuthPage = () => {
                               {loading ? 'Verifying...' : 'Verify & Activate Account'}
                             </button>
 
-                            <p className="text-sm text-gray-600 text-center">
-                              Didn't receive the code?{' '}
-                              <button
-                                type="button"
-                                onClick={() => toast.info('Resend functionality will be implemented')}
-                                className="text-[#024890] hover:text-blue-700 font-medium"
-                                disabled={loading}
-                              >
-                                Resend
-                              </button>
-                            </p>
                           </form>
                         </div>
                       )}

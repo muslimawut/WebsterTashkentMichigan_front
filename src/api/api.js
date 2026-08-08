@@ -2,6 +2,7 @@ import axios from 'axios';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { reportErrorToTelegram } from '../utils/telegram';
+import { clearAuthSession } from '../utils/authSession';
 
 // Barcha axios so'rovlari cookie (session) yuborsin — global default.
 axios.defaults.withCredentials = true;
@@ -117,25 +118,34 @@ axiosInstance.interceptors.response.use(
     const original = error.config;
     const status0 = error.response?.status;
     const isAuthEndpoint = /\/users\/(login|token\/refresh)/.test(original?.url || '');
+    let sessionExpired = false;
 
     // 401 — access token muddati tugagan bo'lishi mumkin. Cookie'ni bir marta
     // refresh qilib, asl so'rovni qayta yuboramiz. Login/refresh'ning o'zi bundan mustasno.
-    if (status0 === 401 && original && !original._retried && !isAuthEndpoint) {
-      original._retried = true;
-      try {
-        await refreshAuthToken();
-        return axiosInstance(original); // cookie yangilandi — qayta urinamiz
-      } catch (_) {
-        // Refresh ham muvaffaqiyatsiz — sessiya tugagan. Pastdagi oddiy xato ishlovига tushamiz.
-        try { localStorage.removeItem('userLoggedIn'); } catch { /* ignore */ }
+    if (status0 === 401 && original && !isAuthEndpoint) {
+      if (!original._retried) {
+        original._retried = true;
+        try {
+          await refreshAuthToken();
+          return axiosInstance(original); // cookie yangilandi — qayta urinamiz
+        } catch (_) {
+          // Refresh ham muvaffaqiyatsiz — sessiyani quyida yakunlaymiz.
+        }
       }
+
+      // Refresh ishlamadi yoki refreshdan keyingi takroriy so'rov ham 401 qaytardi.
+      // localStorage bilan birga React auth holatini ham darhol yangilaymiz.
+      clearAuthSession();
+      sessionExpired = true;
     }
 
     console.error('API Error:', error);
 
-    let errorMessage = 'An error occurred';
+    let errorMessage = sessionExpired
+      ? 'Session expired. Please sign in again.'
+      : 'An error occurred';
 
-    if (error.response && error.response.data) {
+    if (!sessionExpired && error.response && error.response.data) {
       const data = error.response.data;
 
       // HTML response (e.g. Django 500 page) — don't show raw HTML
@@ -206,6 +216,7 @@ axiosInstance.interceptors.response.use(
     // Throw for catch blocks (AuthPage.jsx, etc.)
     const apiError = new Error(errorMessage);
     apiError.response = error.response;
+    if (sessionExpired) apiError.code = 'SESSION_EXPIRED';
     throw apiError;
   }
 );
@@ -266,6 +277,12 @@ class ApiService {
       phone: userData.phone,
       passport_id: userData.passportId,
       is_bachelor: userData.isBachelor,
+    });
+  }
+
+  async updateProfileFormData(formData) {
+    return axiosInstance.put('/users/profile', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
     });
   }
 

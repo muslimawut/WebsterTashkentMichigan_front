@@ -28,6 +28,7 @@ import ProctorMonitor from './components/ProctorMonitor';
 import Results from './components/ResultsPage';
 import Chatbot from './components/Chatbot';
 import AnnouncementBar from './components/AnnouncementBar';
+import { AUTH_LOGOUT_EVENT } from './utils/authSession';
 
 // Home Page Component
 const HomePage = ({ onSignUpClick, isLoggedIn }) => {
@@ -85,6 +86,13 @@ export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
+    const handleAuthLogout = () => {
+      setIsLoggedIn(false);
+      setLoading(false);
+    };
+
+    window.addEventListener(AUTH_LOGOUT_EVENT, handleAuthLogout);
+
     // Simulate loading time
     const timer = setTimeout(() => {
       setLoading(false);
@@ -103,7 +111,10 @@ export default function App() {
       }
     }, 2000); // 2 seconds loading
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener(AUTH_LOGOUT_EVENT, handleAuthLogout);
+    };
   }, []);
 
   if (loading) {

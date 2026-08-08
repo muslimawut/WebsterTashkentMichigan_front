@@ -25,8 +25,7 @@ import ApiService from '../api/api';
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import ChangePasswordModal from './ChangePasswordModal';
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+import { clearAuthSession } from '../utils/authSession';
 
 const formatBookingDateTime = (dateStr, timeStr) => {
   const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -104,6 +103,7 @@ const ProfilePage = () => {
         bookings: Array.isArray(profile.bookings) ? profile.bookings : []
       });
     } catch (error) {
+      if (error.code === 'SESSION_EXPIRED') return;
       setError('Failed to load profile data. Please try again.');
       showNotification('Failed to load profile data. Please try again.', 'error');
       console.error('Profile load error:', error);
@@ -202,19 +202,7 @@ const ProfilePage = () => {
         formData.append('image', userData.image);
       }
 
-      const response = await fetch(`${API_BASE_URL}/users/profile`, {
-        method: 'PUT',
-        credentials: 'include', // auth httpOnly cookie orqali — Bearer header kerak emas
-        // Content-Type ataylab qo'yilmaydi — browser multipart boundary'ni o'zi qo'yadi
-        body: formData
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to update profile');
-      }
-
-      const data = await response.json();
+      await ApiService.updateProfileFormData(formData);
 
       setIsEditing(false);
       showNotification('Profile updated successfully!', 'success');
@@ -222,6 +210,7 @@ const ProfilePage = () => {
       // Reload profile to get updated data
       await loadUserProfile();
     } catch (error) {
+      if (error.code === 'SESSION_EXPIRED') return;
       showNotification(error.message || 'Failed to update profile. Please try again.', 'error');
       setError(error.message || 'Failed to update profile. Please try again.');
     } finally {
@@ -232,9 +221,7 @@ const ProfilePage = () => {
   const handleLogout = () => {
     if (window.confirm('Are you sure you want to logout?')) {
       // Clear all stored data
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('userLoggedIn');
-      localStorage.removeItem('currentPage');
+      clearAuthSession();
 
       // Redirect to home
       window.location.href = '/';
