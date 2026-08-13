@@ -68,17 +68,51 @@ const formatProctoringErrorData = (data, status) => {
     : `Proctoring request failed (${status}).`;
 };
 
+const stringifyProctoringDetails = (data) => {
+  if (typeof data === 'string') return data;
+  try {
+    return JSON.stringify(data, null, 2);
+  } catch {
+    return String(data ?? '');
+  }
+};
+
 // Proctoring backend guide bo'yicha public va asosiy /api/v1 servisidan alohida.
 // fetch helper JSON/text response hamda DRF validation xatolarini saqlab beradi.
 const proctoringRequest = async (path, options = {}) => {
   // Auth httpOnly cookie orqali (credentials: 'include') — qo'lda Bearer kerak emas.
-  const { requireAuth: _requireAuth, ...requestOptions } = options;
+  const {
+    requireAuth: _requireAuth,
+    reportToTelegram = false,
+    ...requestOptions
+  } = options;
   const headers = new Headers(requestOptions.headers || {});
-  const response = await fetch(`${PROCTORING_API_BASE_URL}${path}`, {
-    ...requestOptions,
-    headers,
-    credentials: 'include',
-  });
+  const url = `${PROCTORING_API_BASE_URL}${path}`;
+  const method = String(requestOptions.method || 'GET').toUpperCase();
+  let response;
+
+  try {
+    response = await fetch(url, {
+      ...requestOptions,
+      headers,
+      credentials: 'include',
+    });
+  } catch (error) {
+    if (reportToTelegram) {
+      void reportErrorToTelegram({
+        message: error?.message || 'Proctoring network request failed.',
+        method,
+        url,
+        details: [
+          `Network response was not received. Browser online: ${navigator.onLine ? 'yes' : 'no'}.`,
+          error?.stack || '',
+        ].filter(Boolean).join('\n'),
+        payload: requestOptions.body,
+      });
+    }
+    throw error;
+  }
+
   const contentType = response.headers.get('content-type') || '';
   const responseBody = await response.text();
   let data = responseBody;
@@ -95,6 +129,16 @@ const proctoringRequest = async (path, options = {}) => {
     const error = new Error(formatProctoringErrorData(data, response.status));
     error.status = response.status;
     error.data = data;
+    if (reportToTelegram) {
+      void reportErrorToTelegram({
+        message: error.message,
+        status: response.status,
+        method,
+        url,
+        details: stringifyProctoringDetails(data),
+        payload: requestOptions.body,
+      });
+    }
     throw error;
   }
   return data;
@@ -437,6 +481,7 @@ class ApiService {
   async proctorStartSession({ fullName, passportId, examUrl }) {
     return proctoringRequest('/proctoring/sessions/start', {
       method: 'POST',
+      reportToTelegram: true,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         full_name: fullName,
