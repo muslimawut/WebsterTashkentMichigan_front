@@ -18,6 +18,56 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 // Proctoring backend URL ataylab manual: .env qiymatiga bog'liq emas.
 const PROCTORING_API_BASE_URL = 'https://mept.webster.uz/api/v1';
 
+const PROCTORING_FIELD_LABELS = {
+  full_name: 'Full name',
+  passport_id: 'Passport ID',
+  exam_url: 'Exam URL',
+  non_field_errors: '',
+};
+
+// DRF xatolari ikki shaklda keladi:
+//   { passport_id: ['...'] } yoki { detail: '...' }.
+// Ikkalasini ham foydalanuvchiga ko'rsatishga yaroqli bitta xabarga aylantiramiz.
+const formatProctoringErrorData = (data, status) => {
+  if (typeof data === 'string') {
+    const value = data.trim();
+    if (value && !value.startsWith('<')) return value;
+    return status >= 500
+      ? 'Proctoring server error. Please try again.'
+      : `Proctoring request failed (${status}).`;
+  }
+
+  if (Array.isArray(data)) {
+    const messages = data.map((item) => String(item).trim()).filter(Boolean);
+    if (messages.length) return messages.join(' ');
+  }
+
+  if (data && typeof data === 'object') {
+    if (data.detail !== undefined) {
+      const detail = Array.isArray(data.detail) ? data.detail : [data.detail];
+      const messages = detail.map((item) => String(item).trim()).filter(Boolean);
+      if (messages.length) return messages.join(' ');
+    }
+
+    const messages = Object.entries(data).flatMap(([field, value]) => {
+      const fieldMessages = Array.isArray(value) ? value : [value];
+      const label = PROCTORING_FIELD_LABELS[field]
+        ?? field.split('_').map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+
+      return fieldMessages
+        .map((item) => String(item).trim())
+        .filter(Boolean)
+        .map((message) => label ? `${label}: ${message}` : message);
+    });
+
+    if (messages.length) return messages.join(' ');
+  }
+
+  return status >= 500
+    ? 'Proctoring server error. Please try again.'
+    : `Proctoring request failed (${status}).`;
+};
+
 // Proctoring backend guide bo'yicha public va asosiy /api/v1 servisidan alohida.
 // fetch helper JSON/text response hamda DRF validation xatolarini saqlab beradi.
 const proctoringRequest = async (path, options = {}) => {
@@ -30,12 +80,19 @@ const proctoringRequest = async (path, options = {}) => {
     credentials: 'include',
   });
   const contentType = response.headers.get('content-type') || '';
-  const data = contentType.includes('application/json')
-    ? await response.json()
-    : await response.text();
+  const responseBody = await response.text();
+  let data = responseBody;
+  if (contentType.includes('json') && responseBody) {
+    try {
+      data = JSON.parse(responseBody);
+    } catch {
+      // Noto'g'ri JSON qaytsa ham HTTP statusni yo'qotmaymiz; raw text xato
+      // formatteriga tushadi.
+    }
+  }
 
   if (!response.ok) {
-    const error = new Error(`Proctoring API request failed (${response.status})`);
+    const error = new Error(formatProctoringErrorData(data, response.status));
     error.status = response.status;
     error.data = data;
     throw error;

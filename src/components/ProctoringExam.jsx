@@ -106,13 +106,16 @@ const fmtClock = (d) =>
   d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
 const getProctoringApiErrorMessage = (error) => {
+  // proctoringRequest DRF field xatolari, `detail` va text/HTML javoblarini
+  // oldindan foydalanuvchiga mos Error.message'ga aylantiradi.
+  if (error?.message) return error.message;
   const data = error?.data;
   if (data && typeof data === 'object') {
     if (data.detail) return String(data.detail);
     const first = Object.values(data)[0];
     if (Array.isArray(first) && first.length) return String(first[0]);
   }
-  return error?.message || 'Proctoring API is unavailable.';
+  return 'Proctoring API is unavailable.';
 };
 
 const makeEventId = (type) => {
