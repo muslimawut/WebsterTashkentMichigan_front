@@ -12,6 +12,7 @@ import { saveSession as saveLocalSession } from '../utils/proctorStore';
 import { sendSupportReportToTelegram } from '../utils/telegram';
 import { formatPassportId, isValidPassportId, PASSPORT_ID_LENGTH } from '../utils/sanitize';
 import { createCompositeRecordingStream } from '../utils/compositeRecordingStream';
+import { loadYouTubeIframeApi } from '../utils/youtubeApi';
 import {
   saveResumableSession,
   readResumableSession,
@@ -40,6 +41,21 @@ const METRICA_EXAM_URL =
 const PROCTORING_APP_URL = `${window.location.origin}/`;
 // Uzilgan sessiyani tiklash uchun kalit (Writing sessiyalaridan alohida).
 const RESUME_KIND = 'metrica';
+// Imtihon oldidan ko'rsatiladigan yo'riqnoma videosi (VideoSection'dagi bilan bir xil).
+const INTRO_VIDEO_ID = 'e4iECtG9OfE';
+// Tasdiq shu muddat davomida eslab qolinadi: sahifa qayta yuklanganda student
+// videoni boshidan ko'rishga majbur bo'lmaydi (qoidalar esa qayta ko'rsatiladi).
+const VIDEO_CONFIRM_KEY = 'proctor_intro_video_confirmed_at';
+const VIDEO_CONFIRM_TTL_MS = 2 * 60 * 60 * 1000;
+
+const readVideoConfirmedAt = () => {
+  try {
+    const value = Number(localStorage.getItem(VIDEO_CONFIRM_KEY) || 0);
+    return Number.isFinite(value) && Date.now() - value < VIDEO_CONFIRM_TTL_MS ? value : 0;
+  } catch {
+    return 0;
+  }
+};
 const MEDIAPIPE_VERSION = '0.10.12';
 
 // Davriy ekran snapshoti. MEPT foreground'da bo'lsa (student MEPT sahifasida)
@@ -279,6 +295,9 @@ const ProctoringExam = () => {
   const [frameTick, setFrameTick] = useState(0); // davriy kadr yig'ilganda saqlashni trigger qiladi
   const [rulesConfirmed, setRulesConfirmed] = useState(false);
   const [rulesAccepted, setRulesAccepted] = useState(false);
+  // Yo'riqnoma videosi — qoidalardan oldingi birinchi qadam.
+  const [videoConfirmed, setVideoConfirmed] = useState(false);
+  const videoConfirmedAtRef = useRef(0);
 
   const videoRef = useRef(null);
   const streamRef = useRef(null);
@@ -1235,6 +1254,13 @@ const ProctoringExam = () => {
       logEvent('session_started', 'Session started', 'info');
     }
 
+    // Yo'riqnoma videosi ko'rilgani sessiya logida dalil bo'lib qoladi.
+    logEvent(
+      'instruction_video_confirmed',
+      'Student confirmed watching the instruction video before the exam',
+      'info'
+    );
+
     // Boshlanishida bitta snapshot (jim).
     setTimeout(() => captureSnapshot('Session start', { silent: true }), 1200);
   }, [cameraOn, fullName, passportId, logEvent, startScreenShare, stopScreenShare, captureSnapshot, stopAudioMeter]);
@@ -1764,6 +1790,22 @@ const ProctoringExam = () => {
 
   // Kamera/mikrofon permissioni faqat student qoidalarni o'qib tasdiqlagandan
   // keyin so'raladi. Refresh yoki yangi kirishda qoidalar yana ko'rsatiladi.
+  // Birinchi qadam — yo'riqnoma videosi. Faqat tasdiqlangandan keyin qoidalar.
+  if (!videoConfirmed) {
+    return (
+      <IntroVideoStep
+        alreadyWatched={readVideoConfirmedAt() > 0}
+        onBack={() => navigate('/')}
+        onContinue={() => {
+          const at = Date.now();
+          videoConfirmedAtRef.current = at;
+          try { localStorage.setItem(VIDEO_CONFIRM_KEY, String(at)); } catch { /* unavailable */ }
+          setVideoConfirmed(true);
+        }}
+      />
+    );
+  }
+
   if (!rulesAccepted) {
     return (
       <div className="px-root px-rules-root">
@@ -1788,7 +1830,7 @@ const ProctoringExam = () => {
               <span className="px-brand-sub">Exam rules and monitoring consent</span>
             </div>
           </div>
-          <span className="px-rules-step">Step 1 of 3</span>
+          <span className="px-rules-step">Step 2 of 4</span>
         </header>
 
         <main className="px-rules-page">
@@ -2304,6 +2346,362 @@ const ProctoringExam = () => {
   );
 };
 
+/* ── Yo'riqnoma videosi (birinchi qadam) ──────────────────────
+   Student imtihonga kirishdan oldin videoni ko'radi va ko'rganini tasdiqlaydi.
+   Tasdiq tugmasi video tugagach ochiladi (IFrame API holatidan bilinadi).
+   Player yuklanmasa — oddiy iframe ko'rsatiladi va tasdiq bloklanmaydi, aks
+   holda YouTube ishlamagan kunda student imtihonga umuman kira olmasdi. */
+const formatVideoTime = (seconds) => {
+  const safe = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
+  const mins = Math.floor(safe / 60);
+  const secs = Math.floor(safe % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
+/* ── Yo'riqnoma videosi (birinchi qadam) ──────────────────────
+   Student imtihonga kirishdan oldin videoni ko'radi va ko'rganini tasdiqlaydi.
+   Player VideoSection'dagi kabi TIZIMNING O'Z boshqaruvlari bilan ishlaydi
+   (YouTube tugmalari `controls: 0` bilan o'chirilgan).
+
+   Tasdiq tugmasi video tugagach ochiladi. Oldinga o'tkazib yuborish
+   (skip) ishlamaydi: progress bar faqat ko'rilgan joygacha suriladi — aks
+   holda "videoni ko'rdim" tasdig'i ma'nosini yo'qotardi.
+
+   Player yuklanmasa — oddiy iframe ko'rsatiladi va tasdiq bloklanmaydi, aks
+   holda YouTube ishlamagan kunda student imtihonga umuman kira olmasdi. */
+const IntroVideoStep = ({ alreadyWatched, onBack, onContinue }) => {
+  const hostRef = useRef(null);
+  const wrapperRef = useRef(null);
+  const playerRef = useRef(null);
+  const maxWatchedRef = useRef(0);
+
+  const [ready, setReady] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [volume, setVolume] = useState(100);
+  const [muted, setMuted] = useState(false);
+  const [watched, setWatched] = useState(alreadyWatched);
+  const [confirmed, setConfirmed] = useState(false);
+  const [playerFailed, setPlayerFailed] = useState(false);
+  const [skipNotice, setSkipNotice] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
+
+  useEffect(() => {
+    let disposed = false;
+    let progressTimer = null;
+
+    loadYouTubeIframeApi()
+      .then((YT) => {
+        if (disposed || !hostRef.current) return;
+        const player = new YT.Player(hostRef.current, {
+          host: 'https://www.youtube-nocookie.com',
+          width: '100%',
+          height: '100%',
+          videoId: INTRO_VIDEO_ID,
+          playerVars: {
+            controls: 0,
+            disablekb: 1,
+            playsinline: 1,
+            rel: 0,
+            modestbranding: 1,
+            origin: window.location.origin,
+          },
+          events: {
+            onReady: (event) => {
+              if (disposed) return;
+              playerRef.current = event.target;
+              setReady(true);
+              setDuration(event.target.getDuration?.() || 0);
+              setVolume(event.target.getVolume?.() ?? 100);
+              setMuted(Boolean(event.target.isMuted?.()));
+              progressTimer = window.setInterval(() => {
+                const active = playerRef.current;
+                if (!active?.getCurrentTime) return;
+                const time = active.getCurrentTime() || 0;
+                const total = active.getDuration() || 0;
+                setCurrentTime(time);
+                setDuration(total);
+                if (time > maxWatchedRef.current) maxWatchedRef.current = time;
+                // Oxirgi soniyalarda pauza qilinsa ENDED kelmaydi — 95% yetarli.
+                if (total > 0 && time / total >= 0.95) setWatched(true);
+              }, 500);
+            },
+            onStateChange: (event) => {
+              if (disposed) return;
+              setPlaying(event.data === YT.PlayerState.PLAYING);
+              if (event.data === YT.PlayerState.ENDED) setWatched(true);
+            },
+            onError: () => {
+              if (!disposed) setPlayerFailed(true);
+            },
+          },
+        });
+        playerRef.current = player;
+      })
+      .catch(() => {
+        if (!disposed) setPlayerFailed(true);
+      });
+
+    return () => {
+      disposed = true;
+      if (progressTimer !== null) clearInterval(progressTimer);
+      try { playerRef.current?.destroy?.(); } catch { /* player allaqachon yo'q */ }
+      playerRef.current = null;
+    };
+  }, []);
+
+  const togglePlay = () => {
+    const player = playerRef.current;
+    if (!ready || !player) return;
+    if (player.getPlayerState?.() === window.YT?.PlayerState?.PLAYING) player.pauseVideo?.();
+    else player.playVideo?.();
+  };
+
+  const seek = (event) => {
+    if (!ready || !duration) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+    const target = ratio * duration;
+    // Ko'rilmagan qismga sakrash mumkin emas; orqaga qaytish erkin.
+    if (target > maxWatchedRef.current + 1 && !watched) {
+      setSkipNotice(true);
+      setTimeout(() => setSkipNotice(false), 2600);
+      return;
+    }
+    playerRef.current?.seekTo?.(target, true);
+    setCurrentTime(target);
+  };
+
+  const toggleMute = () => {
+    const player = playerRef.current;
+    if (!ready || !player) return;
+    if (muted) { player.unMute?.(); setMuted(false); } else { player.mute?.(); setMuted(true); }
+  };
+
+  const changeVolume = (event) => {
+    const next = Number(event.target.value);
+    setVolume(next);
+    playerRef.current?.setVolume?.(next);
+    if (next === 0) { playerRef.current?.mute?.(); setMuted(true); } else { playerRef.current?.unMute?.(); setMuted(false); }
+  };
+
+  const toggleFullscreen = useCallback(() => {
+    const wrapper = wrapperRef.current;
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
+      const exit = document.exitFullscreen || document.webkitExitFullscreen;
+      exit?.call(document);
+      return;
+    }
+    const request = wrapper?.requestFullscreen || wrapper?.webkitRequestFullscreen;
+    request?.call(wrapper);
+  }, []);
+
+  // "F" — fullscreen'ga kirish va undan chiqish (video pleyerlaridagi odatiy yorliq).
+  // Fokus matn maydonida bo'lsa harf oddiy belgi bo'lib qolishi kerak.
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.key !== 'f' && event.key !== 'F') return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target;
+      const tag = target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) return;
+      event.preventDefault();
+      toggleFullscreen();
+    };
+    const onFullscreenChange = () => {
+      setFullscreen(Boolean(document.fullscreenElement || document.webkitFullscreenElement));
+    };
+    window.addEventListener('keydown', onKeyDown);
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', onFullscreenChange);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', onFullscreenChange);
+    };
+  }, [toggleFullscreen]);
+
+  const progress = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
+  const canConfirm = watched || playerFailed;
+
+  return (
+    <div className="px-root px-rules-root">
+      <style>{CSS}</style>
+      <div className="px-bg" aria-hidden>
+        <span className="px-blob px-blob-1" />
+        <span className="px-blob px-blob-2" />
+        <span className="px-grid" />
+      </div>
+
+      <header className="px-header px-rules-header">
+        <button className="px-back" onClick={onBack}>
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+          <span>Back</span>
+        </button>
+        <div className="px-brand">
+          <img className="px-brand-logo" src={websterLogo} alt="Webster" />
+          <div className="px-brand-text">
+            <span className="px-brand-name">Webster · MEPT</span>
+            <span className="px-brand-sub">Instruction video</span>
+          </div>
+        </div>
+        <span className="px-rules-step">Step 1 of 4</span>
+      </header>
+
+      <main className="px-rules-page">
+        <section className="px-rules-card">
+          <h1 className="px-video-title">Watch the instruction video first</h1>
+          <p className="px-video-lead">
+            The video explains how the exam is taken and how proctoring works. Watch it to the end — the confirmation
+            below unlocks when the video finishes. Press <b>F</b> for fullscreen (press it again to exit).
+          </p>
+
+          <div className="px-video-frame" ref={wrapperRef}>
+            {playerFailed ? (
+              <iframe
+                src={`https://www.youtube-nocookie.com/embed/${INTRO_VIDEO_ID}?rel=0`}
+                title="MEPT instruction video"
+                allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+            ) : (
+              <>
+                <div className="px-video-host" ref={hostRef} />
+                {/* Ijro maydoniga klik — play/pause. Ayni paytda fokus iframe ichiga
+                    o'tib ketmaydi, shuning uchun "F" yorlig'i ishlashda davom etadi. */}
+                <button
+                  type="button"
+                  className="px-video-surface"
+                  onClick={togglePlay}
+                  aria-label={playing ? 'Pause video' : 'Play video'}
+                />
+
+                {ready && !playing && (
+                  <button type="button" className="px-video-bigplay" onClick={togglePlay} aria-label="Play video">
+                    <svg width="34" height="34" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
+                    </svg>
+                  </button>
+                )}
+
+                <div className="px-video-controls">
+                  <button
+                    type="button"
+                    className="px-video-track"
+                    onClick={seek}
+                    aria-label="Seek video"
+                  >
+                    <span className="px-video-fill" style={{ width: `${progress}%` }} />
+                  </button>
+
+                  <div className="px-video-row">
+                    <button type="button" className="px-video-btn" onClick={togglePlay} disabled={!ready} aria-label={playing ? 'Pause video' : 'Play video'}>
+                      {playing ? (
+                        <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20">
+                          <path d="M5 4.75A.75.75 0 015.75 4h2.5a.75.75 0 01.75.75v10.5a.75.75 0 01-.75.75h-2.5a.75.75 0 01-.75-.75V4.75zm6 0a.75.75 0 01.75-.75h2.5a.75.75 0 01.75.75v10.5a.75.75 0 01-.75.75h-2.5a.75.75 0 01-.75-.75V4.75z" />
+                        </svg>
+                      ) : (
+                        <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20">
+                          <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
+                        </svg>
+                      )}
+                    </button>
+
+                    <button type="button" className="px-video-btn" onClick={toggleMute} disabled={!ready} aria-label={muted ? 'Unmute video' : 'Mute video'}>
+                      <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217z" />
+                        {muted && <path d="M12.3 7.3a1 1 0 011.4 0L15 8.6l1.3-1.3a1 1 0 111.4 1.4L16.4 10l1.3 1.3a1 1 0 01-1.4 1.4L15 11.4l-1.3 1.3a1 1 0 01-1.4-1.4l1.3-1.3-1.3-1.3a1 1 0 010-1.4z" />}
+                      </svg>
+                    </button>
+
+                    <input
+                      className="px-video-range"
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={muted ? 0 : volume}
+                      onChange={changeVolume}
+                      aria-label="Video volume"
+                    />
+
+                    <span className="px-video-time">
+                      {formatVideoTime(currentTime)} / {formatVideoTime(duration)}
+                    </span>
+
+                    <button
+                      type="button"
+                      className="px-video-btn px-video-fs"
+                      onClick={toggleFullscreen}
+                      aria-label={fullscreen ? 'Exit fullscreen (F)' : 'Enter fullscreen (F)'}
+                      title={fullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'}
+                    >
+                      {fullscreen ? (
+                        <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20">
+                          <path d="M8 3a1 1 0 011 1v4a1 1 0 01-1 1H4a1 1 0 010-2h1.6L3.3 4.7a1 1 0 111.4-1.4L7 5.6V4a1 1 0 011-1zm4 0a1 1 0 011 1v1.6l2.3-2.3a1 1 0 111.4 1.4L14.4 7H16a1 1 0 010 2h-4a1 1 0 01-1-1V4a1 1 0 011-1zM4 11h4a1 1 0 011 1v4a1 1 0 01-2 0v-1.6l-2.3 2.3a1 1 0 01-1.4-1.4L5.6 13H4a1 1 0 010-2zm8 0h4a1 1 0 010 2h-1.6l2.3 2.3a1 1 0 01-1.4 1.4L13 14.4V16a1 1 0 01-2 0v-4a1 1 0 011-1z" />
+                        </svg>
+                      ) : (
+                        <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20">
+                          <path d="M3 4a1 1 0 011-1h4a1 1 0 010 2H6.4l2.3 2.3a1 1 0 11-1.4 1.4L5 6.4V8a1 1 0 01-2 0V4zm9 1a1 1 0 010-2h4a1 1 0 011 1v4a1 1 0 01-2 0V6.4l-2.3 2.3a1 1 0 11-1.4-1.4L13.6 5H12zM3 12a1 1 0 012 0v1.6l2.3-2.3a1 1 0 111.4 1.4L6.4 15H8a1 1 0 010 2H4a1 1 0 01-1-1v-4zm13-1a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 010-2h1.6l-2.3-2.3a1 1 0 111.4-1.4l2.3 2.3V12a1 1 0 011-1z" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          {skipNotice && (
+            <p className="px-video-hint is-warn">You cannot skip ahead — the video must be watched from where you left off.</p>
+          )}
+          {!skipNotice && playerFailed && (
+            <p className="px-video-hint is-warn">
+              Playback progress could not be tracked in this browser. Please watch the whole video before confirming.
+            </p>
+          )}
+          {!skipNotice && !playerFailed && !watched && (
+            <p className="px-video-hint">The confirmation unlocks when the video reaches the end.</p>
+          )}
+          {!skipNotice && !playerFailed && watched && (
+            <p className="px-video-hint is-done">Video watched — you can confirm and continue.</p>
+          )}
+
+          <label className={`px-rules-consent ${confirmed ? 'is-checked' : ''} ${canConfirm ? '' : 'is-locked'}`}>
+            <input
+              type="checkbox"
+              checked={confirmed}
+              disabled={!canConfirm}
+              onChange={(event) => setConfirmed(event.target.checked)}
+            />
+            <span className="px-rules-checkbox" aria-hidden>
+              {confirmed && (
+                <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+            </span>
+            <span>I confirm that I have watched the instruction video in full.</span>
+          </label>
+
+          <button
+            type="button"
+            className="px-btn px-btn-primary px-rules-continue"
+            disabled={!confirmed}
+            onClick={onContinue}
+          >
+            <span className="px-btn-glow" />
+            Continue to exam rules
+          </button>
+          <p className="px-rules-footnote">Next: exam rules and monitoring consent, then camera and screen setup.</p>
+        </section>
+      </main>
+    </div>
+  );
+};
+
 /* ── UI helpers ───────────────────────────────────────────── */
 const StatusPill = ({ on, labelOn, labelOff }) => (
   <span className={`px-pill ${on ? 'is-on' : ''}`}>
@@ -2493,6 +2891,31 @@ const CSS = `
   font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;}
 .px-rules-root{position:relative;overflow-x:hidden;}
 .px-rules-header{position:relative;z-index:2;}
+.px-video-title{font-size:22px;font-weight:800;color:#fff;}
+.px-video-lead{margin:8px 0 18px;font-size:14px;line-height:1.6;color:#a8bcd8;}
+.px-video-frame{position:relative;width:100%;aspect-ratio:16/9;border-radius:16px;overflow:hidden;background:#000;border:1px solid rgba(148,180,221,.2);}
+.px-video-frame iframe,.px-video-host{position:absolute;inset:0;width:100%;height:100%;border:0;}
+.px-video-host>iframe{width:100%;height:100%;}
+/* YouTube tugmalari o'chirilgan (controls:0) — quyidagilar tizimning o'z boshqaruvlari */
+.px-video-bigplay{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:2;width:70px;height:70px;display:grid;place-items:center;padding-left:4px;border:0;border-radius:50%;cursor:pointer;color:#024890;background:rgba(255,255,255,.95);box-shadow:0 14px 40px rgba(0,0,0,.45);transition:transform .18s ease;}
+.px-video-bigplay:hover{transform:translate(-50%,-50%) scale(1.08);}
+.px-video-surface{position:absolute;inset:0;z-index:1;width:100%;height:100%;padding:0;border:0;background:transparent;cursor:pointer;}
+.px-video-controls{position:absolute;inset:auto 0 0 0;z-index:3;padding:34px 14px 12px;background:linear-gradient(to top,rgba(0,0,0,.95),rgba(0,0,0,.7),transparent);}
+.px-video-track{display:block;width:100%;height:8px;margin-bottom:10px;padding:0;border:0;border-radius:999px;background:rgba(255,255,255,.28);cursor:pointer;text-align:left;}
+.px-video-fill{display:block;height:100%;border-radius:999px;background:#1477d4;}
+.px-video-row{display:flex;align-items:center;gap:12px;color:#fff;}
+.px-video-btn{display:grid;place-items:center;width:32px;height:32px;flex-shrink:0;padding:0;border:0;border-radius:9px;background:transparent;color:#fff;cursor:pointer;}
+.px-video-btn:hover:not(:disabled){background:rgba(255,255,255,.14);}
+.px-video-btn:disabled{opacity:.45;cursor:not-allowed;}
+.px-video-range{width:88px;accent-color:#1477d4;cursor:pointer;}
+.px-video-time{font-size:12.5px;font-weight:600;white-space:nowrap;}
+.px-video-fs{margin-left:auto;}
+@media(max-width:560px){.px-video-range{display:none}.px-video-controls{padding:26px 10px 10px}.px-video-bigplay{width:56px;height:56px}}
+.px-video-hint{margin:12px 0 16px;font-size:12.5px;font-weight:600;color:#8aa0c2;}
+.px-video-hint.is-done{color:#6ee7b7;}
+.px-video-hint.is-warn{color:#fbbf24;}
+.px-rules-consent.is-locked{opacity:.55;cursor:not-allowed;}
+.px-rules-consent.is-locked input{cursor:not-allowed;}
 .px-rules-step{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#7dd3fc;background:rgba(56,189,248,.1);border:1px solid rgba(56,189,248,.25);border-radius:999px;padding:6px 10px;white-space:nowrap;}
 .px-rules-page{position:relative;z-index:1;width:min(920px,calc(100% - 32px));margin:0 auto;padding:38px 0 70px;}
 .px-rules-card{background:linear-gradient(180deg,rgba(16,31,55,.96),rgba(7,18,36,.96));border:1px solid rgba(148,180,221,.18);border-radius:24px;padding:30px;box-shadow:0 34px 90px -45px rgba(0,0,0,.9),0 0 50px -35px rgba(56,189,248,.45);}
