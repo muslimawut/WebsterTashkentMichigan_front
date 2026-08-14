@@ -1,10 +1,22 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/api';
 import { handoffProctorMedia } from '../utils/proctorMediaBridge';
+import {
+  queueMediaUpload,
+  createUploadFailureReporter,
+  createCaptureHealthMonitor,
+} from '../utils/proctorMediaUpload';
 import websterLogo from '../../logowhitewebster.png';
 import { saveSession as saveLocalSession } from '../utils/proctorStore';
 import { sendSupportReportToTelegram } from '../utils/telegram';
+import { formatPassportId, isValidPassportId, PASSPORT_ID_LENGTH } from '../utils/sanitize';
+import { createCompositeRecordingStream } from '../utils/compositeRecordingStream';
+import {
+  saveResumableSession,
+  readResumableSession,
+  clearResumableSession,
+} from '../utils/proctorSessionResume';
 
 /*
   Proctoring sahifasi.
@@ -26,6 +38,8 @@ const METRICA_EXAM_URL =
 // qilinmaydi: qaysi hostda ishlayotgan bo'lsa (mept.webster.uz, localhost…)
 // o'shani yuboramiz.
 const PROCTORING_APP_URL = `${window.location.origin}/`;
+// Uzilgan sessiyani tiklash uchun kalit (Writing sessiyalaridan alohida).
+const RESUME_KIND = 'metrica';
 const MEDIAPIPE_VERSION = '0.10.12';
 
 // Davriy ekran snapshoti. MEPT foreground'da bo'lsa (student MEPT sahifasida)
@@ -233,8 +247,12 @@ const ProctoringExam = () => {
   const navigate = useNavigate();
 
   const [phase, setPhase] = useState('idle');
-  const [fullName, setFullName] = useState('');
-  const [passportId, setPassportId] = useState('');
+  // Sahifa yopilib qaytadan kirilgan bo'lsa — ma'lumotlarni qayta yozdirmaymiz.
+  // (Ilgari student har safar qo'lda kiritardi va ism har xil yozilib ketardi.)
+  const [fullName, setFullName] = useState(() => readResumableSession(RESUME_KIND)?.fullName || '');
+  const [passportId, setPassportId] = useState(
+    () => formatPassportId(readResumableSession(RESUME_KIND)?.passportId || '')
+  );
   const [cameraOn, setCameraOn] = useState(false);
   const [micOn, setMicOn] = useState(false);
   const [permissionError, setPermissionError] = useState('');
@@ -302,6 +320,7 @@ const ProctoringExam = () => {
   // Ekran-share boshlanganda ishga tushadi va ~SEGMENT_MS'lik mustaqil segmentlar
   // yozadi; cheating bo'lganда o'sha segment klip sifatida chiqadi.
   const segRecorderRef = useRef(null);
+  const compositeRef = useRef(null);    // ekran + kamera PIP birlashtirilgan oqim
   const segChunksRef = useRef([]);
   const segTimerRef = useRef(null);
   const segStartedAtRef = useRef(0);
@@ -357,6 +376,17 @@ const ProctoringExam = () => {
     }
     return { entry, request };
   }, [trackApiRequest]);
+
+  // Media yuklash yiqilsa — activity log'da ko'rinadi (jim yo'qolmaydi), kadr
+  // olish sekinlashsa — proctor buni ham log'dan biladi.
+  const uploadFailureReporter = useMemo(
+    () => createUploadFailureReporter((type, message, severity) => logEvent(type, message, severity)),
+    [logEvent]
+  );
+  const captureHealth = useMemo(
+    () => createCaptureHealthMonitor((type, message, severity) => logEvent(type, message, severity)),
+    [logEvent]
+  );
 
   /* ── Snapshot olish (ekran + kamera PIP) ─────────────────── */
   const captureSnapshot = useCallback((reason, { silent = false, eventId = null } = {}) => {
@@ -421,15 +451,21 @@ const ProctoringExam = () => {
       const eventRequest = meta?.request || logged?.request || Promise.resolve();
       const clientTime = meta?.clientTime || logged?.entry?.time?.toISOString() || new Date().toISOString();
       // Guide talabi: event serverda yaratilgach aynan shu event_id bilan media yuboriladi.
-      trackApiRequest(eventRequest.then(() => api.proctorUploadScreenshot(sid, {
-        image: dataUrl,
-        reason,
-        eventId: snapshotId,
-        clientTime,
+      // Yuklash navbat orqali ketadi: retry + kanalni bo'g'ib qo'ymaydigan parallellik.
+      trackApiRequest(eventRequest.then(() => queueMediaUpload({
+        kind: 'screenshot',
+        priority: eventId ? 'evidence' : 'routine',
+        upload: () => api.proctorUploadScreenshot(sid, {
+          image: dataUrl,
+          reason,
+          eventId: snapshotId,
+          clientTime,
+        }),
+        onFailure: (result) => uploadFailureReporter.note('screenshot', result),
       })));
     }
     return dataUrl;
-  }, [logEvent, trackApiRequest]);
+  }, [logEvent, trackApiRequest, uploadFailureReporter]);
 
   /* ── Klip chiqarish (tayyor segment blob'idan) ───────────── */
   const emitClip = useCallback((blob, reason, eventId) => {
@@ -447,14 +483,19 @@ const ProctoringExam = () => {
     if (sid) {
       const meta = eventMetaRef.current.get(eventId);
       const eventRequest = meta?.request || Promise.resolve();
-      trackApiRequest(eventRequest.then(() => api.proctorUploadClip(sid, {
-        blob,
-        reason,
-        eventId,
-        clientTime: meta?.clientTime,
+      trackApiRequest(eventRequest.then(() => queueMediaUpload({
+        kind: 'clip',
+        priority: 'evidence',
+        upload: () => api.proctorUploadClip(sid, {
+          blob,
+          reason,
+          eventId,
+          clientTime: meta?.clientTime,
+        }),
+        onFailure: (result) => uploadFailureReporter.note('clip', result),
       })));
     }
-  }, [trackApiRequest]);
+  }, [trackApiRequest, uploadFailureReporter]);
 
   /* ── Uzluksiz segment-recorder ───────────────────────────── */
   const stopSegmentLoop = useCallback(() => {
@@ -481,7 +522,12 @@ const ProctoringExam = () => {
     }
     segRecorderRef.current = null;
     setClipRecording(false);
-    return stopped;
+    // Kompozit oqim oxirgi segment yozib bo'lingach to'xtatiladi — aks holda
+    // klipning oxirgi kadrlari kesilib qolardi.
+    return stopped.then(() => {
+      compositeRef.current?.stop();
+      compositeRef.current = null;
+    });
   }, []);
 
   const startSegmentLoop = useCallback(() => {
@@ -491,7 +537,17 @@ const ProctoringExam = () => {
 
     const vTrack = stream.getVideoTracks()[0];
     const aTrack = streamRef.current?.getAudioTracks?.()[0]; // mikrofon (ovoz)
-    const combined = new MediaStream(aTrack ? [vTrack, aTrack] : [vTrack]);
+    // Klipda ekran bilan birga kamera ham ko'rinishi kerak (skreenshotlardagi
+    // kabi PIP). Toza ekran treki yozilsa videoda student umuman ko'rinmasdi.
+    compositeRef.current?.stop();
+    compositeRef.current = createCompositeRecordingStream({
+      getScreenVideo: () => screenVideoRef.current,
+      getCameraVideo: () => videoRef.current,
+      audioTrack: aTrack || null,
+    });
+    // Canvas capture ishlamaydigan brauzerda eski xatti-harakat (faqat ekran).
+    const combined = compositeRef.current?.stream
+      || new MediaStream(aTrack ? [vTrack, aTrack] : [vTrack]);
     const mime = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
       .find((m) => MediaRecorder.isTypeSupported(m)) || '';
 
@@ -1114,13 +1170,38 @@ const ProctoringExam = () => {
     if (!shared) return;
 
     let sid = null;
+    let resumed = false;
+
+    // Sahifa yopilib/qayta yuklanib, student qaytadan kirgan bo'lishi mumkin.
+    // Shu holatda yangi sessiya ochmaymiz — oldingisi hali `active` bo'lsa,
+    // log o'sha sessiyada davom etadi (aks holda bitta imtihon ro'yxatda bir
+    // necha bo'lakka bo'linib ketardi).
+    const saved = readResumableSession(RESUME_KIND, { passportId: passportId.trim() });
+    if (saved) {
+      try {
+        const existing = await api.proctorGetSession(saved.sessionId);
+        const data = existing?.data || existing || {};
+        const remoteStatus = String(data.status || data.exam_status || data.state || '').toLowerCase();
+        const remotePassport = String(data.passport_id || data.passport || '').toUpperCase();
+        const samePassport = !remotePassport || remotePassport === passportId.trim().toUpperCase();
+        if (remoteStatus === 'active' && samePassport) {
+          sid = saved.sessionId;
+          resumed = true;
+        }
+      } catch {
+        // Sessiya topilmadi yoki backend javob bermadi — pastda yangisini ochamiz.
+      }
+    }
+
     try {
-      const res = await api.proctorStartSession({
-        fullName: fullName.trim(),
-        passportId: passportId.trim(),
-        examUrl: PROCTORING_APP_URL,
-      });
-      sid = res?.session_id || res?.id || res?.data?.session_id || null;
+      if (!sid) {
+        const res = await api.proctorStartSession({
+          fullName: fullName.trim(),
+          passportId: passportId.trim(),
+          examUrl: PROCTORING_APP_URL,
+        });
+        sid = res?.session_id || res?.id || res?.data?.session_id || null;
+      }
       if (!sid) throw new Error('Proctoring API did not return session_id.');
     } catch (error) {
       stopScreenShare();
@@ -1138,15 +1219,46 @@ const ProctoringExam = () => {
     sessionIdRef.current = sid;
     setSessionId(sid);
     try { sessionStorage.setItem('proctoring_session_id', sid); } catch { /* unavailable */ }
+    // Sahifa yopilsa ham tiklay olishimiz uchun localStorage'ga yozamiz.
+    saveResumableSession(RESUME_KIND, {
+      sessionId: sid,
+      fullName: fullName.trim(),
+      passportId: passportId.trim(),
+    });
 
     activeRef.current = true;
     startedAtRef.current = Date.now();
     setPhase('active');
-    logEvent('session_started', 'Session started', 'info');
+    if (resumed) {
+      logEvent('session_resumed', 'Monitoring resumed in the same session after the page was closed or reloaded', 'info');
+    } else {
+      logEvent('session_started', 'Session started', 'info');
+    }
 
     // Boshlanishida bitta snapshot (jim).
     setTimeout(() => captureSnapshot('Session start', { silent: true }), 1200);
   }, [cameraOn, fullName, passportId, logEvent, startScreenShare, stopScreenShare, captureSnapshot, stopAudioMeter]);
+
+  /* ── Sahifa yopilishi/qayta yuklanishi ───────────────────
+     Oddiy fetch unload paytida bekor qilinadi, shuning uchun sendBeacon.
+     `/finish` YUBORILMAYDI: sessiya `active` bo'lib qolsa, student qaytib
+     kelganda o'sha sessiyada davom etadi. Bu yerda faqat log uzilgani
+     belgilanadi — proctor nima bo'lganini ko'radi. */
+  useEffect(() => {
+    if (phase !== 'active') return undefined;
+    const onPageHide = () => {
+      const sid = sessionIdRef.current;
+      if (!sid || !activeRef.current) return;
+      api.proctorBeaconEvent(sid, {
+        type: 'exam_page_closed',
+        message: 'Proctoring page was closed or reloaded — monitoring stopped',
+        severity: 'warning',
+        eventId: makeEventId('exam_page_closed'),
+      });
+    };
+    window.addEventListener('pagehide', onPageHide);
+    return () => window.removeEventListener('pagehide', onPageHide);
+  }, [phase]);
 
   /* ── Fon monitoring (tab / fullscreen / kamera) ─────────── */
   useEffect(() => {
@@ -1241,6 +1353,7 @@ const ProctoringExam = () => {
      throttle qilinmaydi — shuning uchun boshqa tabga o'tganda ham snapshot olinadi. */
   useEffect(() => {
     if (phase !== 'active') return;
+    captureHealth.reset();
 
     const workerCode = `let id; onmessage = (e) => {
       if (e.data && e.data.type === 'start') { clearInterval(id); id = setInterval(() => postMessage('tick'), e.data.interval); }
@@ -1249,6 +1362,9 @@ const ProctoringExam = () => {
     // Davriy kadr Activity log'ga ham tushadi; vision uchun oxirgi 30 tasi yetarli.
     const takePeriodic = () => {
       if (!activeRef.current) return;
+      // Kadr kutilgan oraliqdan ancha kech kelgan bo'lsa (brauzer fon tabini
+      // throttle qilgan / qurilma band) — bu log'ga tushadi.
+      captureHealth.tick(intervalFor());
       const img = captureSnapshot('Periodic snapshot', { silent: true });
       if (img) {
         framesRef.current = [...framesRef.current, { time: new Date().toISOString(), image: img }].slice(-30);
@@ -1296,7 +1412,7 @@ const ProctoringExam = () => {
       if (worker) { try { worker.postMessage({ type: 'stop' }); worker.terminate(); } catch { /* ignore */ } }
       if (fallbackInterval) clearInterval(fallbackInterval);
     };
-  }, [phase, captureSnapshot]);
+  }, [phase, captureSnapshot, captureHealth]);
 
   /* ── Uzluksiz segment-recorder — active + ekran ulashilganda ─
      Recorder fon rejimida BOSHLANMAYDI (ekran-share foreground'da yoqilgan
@@ -1599,6 +1715,8 @@ const ProctoringExam = () => {
     // Pending violation segmentini avval final Blob'ga aylantiramiz va uploadini
     // kutamiz. Aks holda session /finish klipdan oldin borib, oxirgi video yo'qolardi.
     await stopSegmentLoop();
+    // Yig'ilgan yuklash xatolari hisoboti /finish dan oldin log'ga tushsin.
+    uploadFailureReporter.flush();
     // Event va media requestlari tugamasdan /finish yuborilmaydi.
     while (pendingApiRequestsRef.current.size) {
       await Promise.allSettled([...pendingApiRequestsRef.current]);
@@ -1609,6 +1727,7 @@ const ProctoringExam = () => {
       catch { /* backend bo'lmasa jim o'tkazamiz */ }
     }
     try { sessionStorage.removeItem('proctoring_session_id'); } catch { /* unavailable */ }
+    clearResumableSession(RESUME_KIND);
     eventMetaRef.current.clear();
     stopAudioMeter();
     // Kamera va Entire Screen streamlarini to'xtatmaymiz: ONLINE Writing shu
@@ -1631,7 +1750,7 @@ const ProctoringExam = () => {
     try { sessionStorage.setItem('writing_candidate', JSON.stringify(writingCandidate)); } catch { /* unavailable */ }
     // ONLINE Writing variantiga o'tamiz — kamera/mikrofon/ekran davom etadi.
     navigate('/writing-test-online', { replace: true, state: writingCandidate });
-  }, [fullName, navigate, passportId, stopAudioMeter, stopSegmentLoop]);
+  }, [fullName, navigate, passportId, stopAudioMeter, stopSegmentLoop, uploadFailureReporter]);
 
   const examLabel =
     phase === 'active' ? 'In progress' :
@@ -1639,7 +1758,9 @@ const ProctoringExam = () => {
     phase === 'ready' ? 'Ready' : 'Not started';
 
   // Full name va passport ID majburiy — bularsiz kamera/sessiya boshlanmaydi.
-  const detailsFilled = fullName.trim().length > 0 && passportId.trim().length > 0;
+  // Passport to'liq formatda (AD7113185) bo'lishi shart: chala ID bilan backend
+  // baribir "booking not found" beradi va student sababini tushunmaydi.
+  const detailsFilled = fullName.trim().length > 0 && isValidPassportId(passportId);
 
   // Kamera/mikrofon permissioni faqat student qoidalarni o'qib tasdiqlagandan
   // keyin so'raladi. Refresh yoki yangi kirishda qoidalar yana ko'rsatiladi.
@@ -1955,7 +2076,22 @@ const ProctoringExam = () => {
                   </div>
                   <div className="px-field">
                     <label>Passport serial &amp; number <span style={{ color: '#f87171' }}>*</span></label>
-                    <input value={passportId} onChange={(e) => setPassportId(e.target.value)} placeholder="e.g. AD7113185" required aria-required="true" />
+                    <input
+                      value={passportId}
+                      onChange={(e) => setPassportId(formatPassportId(e.target.value))}
+                      placeholder="e.g. AD7113185"
+                      maxLength={PASSPORT_ID_LENGTH}
+                      inputMode="text"
+                      autoCapitalize="characters"
+                      autoComplete="off"
+                      spellCheck={false}
+                      required
+                      aria-required="true"
+                      aria-invalid={passportId.length > 0 && !isValidPassportId(passportId)}
+                    />
+                    {passportId.length > 0 && !isValidPassportId(passportId) && (
+                      <p className="px-field-hint">Format: 2 letters + 7 digits (e.g. AD7113185).</p>
+                    )}
                   </div>
                 </div>
 
@@ -2500,6 +2636,7 @@ const CSS = `
   padding:12px 14px;color:#eef4ff;font-size:14.5px;outline:none;transition:.2s;}
 .px-field input::placeholder{color:#5c7397;}
 .px-field input:focus{border-color:#2f7ad6;background:rgba(47,122,214,.08);box-shadow:0 0 0 4px rgba(47,122,214,.15);}
+.px-field-hint{margin-top:6px;font-size:11.5px;color:#fbbf24;}
 .px-ready{display:flex;align-items:flex-start;gap:11px;color:#9df0c8;font-size:13.5px;line-height:1.5;
   background:rgba(16,185,129,.1);border:1px solid rgba(52,211,153,.3);border-radius:14px;padding:13px 15px;margin-bottom:14px;}
 .px-ready svg{flex-shrink:0;color:#34d399;margin-top:1px;}

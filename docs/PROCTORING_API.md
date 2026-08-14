@@ -37,6 +37,10 @@ Called after the camera check passes, before the exam opens.
 
 > Frontend reads the id as `session_id` **or** `id` **or** `data.session_id` — return any one (`session_id` preferred). If this call fails, the frontend falls back to a local id and keeps running, so a non-2xx won't crash the exam — but then screenshots/events won't be linked. Return 2xx.
 
+> **Resume:** the frontend keeps the last session id in `localStorage` and, when the student starts again, first calls §7 (`GET /sessions/{id}`). If that session is still `status: "active"`, belongs to the same passport and is under 2 h old, **no new session is created** — the log continues in the existing one (a `session_resumed` event is appended). So a page reload no longer splits one exam into several sessions.
+>
+> **Recommended (backend side):** make `/start` idempotent as a safety net — if an `active` session exists for the same `passport_id` and its last event is under ~15 min old, return that session instead of creating a new one. The frontend guard fails when the browser storage is cleared or the student switches browsers; this one always holds.
+
 ---
 
 ## 2. Log an event (activity log)
@@ -85,6 +89,15 @@ Called on every monitoring event (fire-and-forget; frontend ignores the response
 | `second_face` | warning | a second person's face detected (cheating) |
 | `snapshot` | warning | event snapshot taken |
 | `clip` | info | screen clip recorded |
+| `session_resumed` / `writing_monitoring_resumed` | info | the page was reloaded and monitoring continued in this same session |
+| `exam_page_closed` / `writing_page_closed` | warning | the proctoring page was closed or reloaded — sent via `navigator.sendBeacon` |
+| `screenshot_upload_failed` | info | screenshots were captured but could not be uploaded (retries exhausted) |
+| `clip_upload_failed` | info | clips were recorded but could not be uploaded |
+| `capture_throttled` | info | the student's tab was throttled — snapshots came far slower than the configured interval |
+
+> `screenshot_upload_failed`, `clip_upload_failed` and `capture_throttled` are **monitoring health** events, not cheating. They tell the proctor that missing screenshots mean "evidence lost in transit", not "nothing happened". Store and return them like any other event; they carry no media.
+>
+> `exam_page_closed` / `writing_page_closed` arrive through `navigator.sendBeacon` while the page is unloading: a normal JSON POST to this same endpoint, but with no response read and no cookies guaranteed on cross-origin. Accept it exactly like a regular event. The session is **not** finished by this — the student may come back and resume it.
 
 ---
 

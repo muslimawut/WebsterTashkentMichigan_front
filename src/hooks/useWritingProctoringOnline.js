@@ -1,10 +1,21 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import api from '../api/api';
 import { saveSession as saveLocalSession } from '../utils/proctorStore';
 import {
   cancelProctorMediaRelease,
   scheduleProctorMediaRelease,
 } from '../utils/proctorMediaBridge';
+import {
+  queueMediaUpload,
+  createUploadFailureReporter,
+  createCaptureHealthMonitor,
+} from '../utils/proctorMediaUpload';
+import { createCompositeRecordingStream } from '../utils/compositeRecordingStream';
+import {
+  saveResumableSession,
+  readResumableSession,
+  clearResumableSession,
+} from '../utils/proctorSessionResume';
 
 // ONLINE Writing proctoring — offline useWritingProctoring'dan farqi: kamera,
 // mikrofon va ekran ulashish TO'XTAMAYDI. Metrica imtihoni tugagach
@@ -22,6 +33,8 @@ const SEGMENT_MS = 10000;
 const MIN_CLIP_MS = 8000;
 const CLIP_BITRATE = 1500000;
 const MAX_SNAPSHOT_WIDTH = 1280;
+// Uzilgan sessiyani tiklash kaliti (Metrica sessiyalaridan alohida).
+const RESUME_KIND = 'writing_online';
 
 const makeEventId = (type) => {
   const safeType = String(type || 'event').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 28);
@@ -70,6 +83,7 @@ export const useWritingProctoringOnline = () => {
   const delayedCaptureTimersRef = useRef(new Set());
 
   const recorderRef = useRef(null);
+  const compositeRef = useRef(null);   // ekran + kamera PIP birlashtirilgan oqim
   const chunksRef = useRef([]);
   const segmentTimerRef = useRef(null);
   const segmentStartedAtRef = useRef(0);
@@ -149,6 +163,17 @@ export const useWritingProctoringOnline = () => {
     return { eventId, request, clientTime };
   }, [trackRequest, upsertLocalEvent]);
 
+  // Yuklanmay qolgan skreenshot/klip va sekinlashgan kadr olish activity log'ga
+  // tushadi — aks holda proctor "dalil yo'q" deb noto'g'ri xulosa qilardi.
+  const uploadFailureReporter = useMemo(
+    () => createUploadFailureReporter((type, message, severity) => logEvent(type, message, severity)),
+    [logEvent]
+  );
+  const captureHealth = useMemo(
+    () => createCaptureHealthMonitor((type, message, severity) => logEvent(type, message, severity)),
+    [logEvent]
+  );
+
   const captureSnapshot = useCallback((reason, linkedEventId = null) => {
     const screenVideo = screenVideoRef.current;
     const cameraVideo = cameraVideoRef.current;
@@ -189,15 +214,20 @@ export const useWritingProctoringOnline = () => {
     if (sid && eventId) {
       const meta = eventMetaRef.current.get(eventId) || eventMeta;
       upsertLocalEvent(eventId, { image, time: meta?.clientTime });
-      trackRequest(Promise.resolve(meta?.request).then(() => api.proctorUploadScreenshot(sid, {
-        image,
-        reason,
-        eventId,
-        clientTime: meta?.clientTime,
+      trackRequest(Promise.resolve(meta?.request).then(() => queueMediaUpload({
+        kind: 'screenshot',
+        priority: linkedEventId ? 'evidence' : 'routine',
+        upload: () => api.proctorUploadScreenshot(sid, {
+          image,
+          reason,
+          eventId,
+          clientTime: meta?.clientTime,
+        }),
+        onFailure: (result) => uploadFailureReporter.note('screenshot', result),
       })));
     }
     return image;
-  }, [logEvent, trackRequest, upsertLocalEvent]);
+  }, [logEvent, trackRequest, upsertLocalEvent, uploadFailureReporter]);
 
   const emitClip = useCallback((blob, reason, eventId) => {
     if (!blob?.size || blob.size > 10 * 1024 * 1024) return;
@@ -205,13 +235,18 @@ export const useWritingProctoringOnline = () => {
     const meta = eventMetaRef.current.get(eventId);
     if (!sid) return;
     upsertLocalEvent(eventId, { clipBlob: blob });
-    trackRequest(Promise.resolve(meta?.request).then(() => api.proctorUploadClip(sid, {
-      blob,
-      reason,
-      eventId,
-      clientTime: meta?.clientTime,
+    trackRequest(Promise.resolve(meta?.request).then(() => queueMediaUpload({
+      kind: 'clip',
+      priority: 'evidence',
+      upload: () => api.proctorUploadClip(sid, {
+        blob,
+        reason,
+        eventId,
+        clientTime: meta?.clientTime,
+      }),
+      onFailure: (result) => uploadFailureReporter.note('clip', result),
     })));
-  }, [trackRequest, upsertLocalEvent]);
+  }, [trackRequest, upsertLocalEvent, uploadFailureReporter]);
 
   const stopRecorder = useCallback(() => {
     recorderStoppingRef.current = true;
@@ -243,7 +278,15 @@ export const useWritingProctoringOnline = () => {
     const screenTrack = screenStreamRef.current?.getVideoTracks?.()[0];
     if (!screenTrack || typeof MediaRecorder === 'undefined') return;
     const audioTrack = cameraStreamRef.current?.getAudioTracks?.()[0];
-    const combined = new MediaStream(audioTrack ? [screenTrack, audioTrack] : [screenTrack]);
+    // Klipda ekran bilan birga kamera ham ko'rinadi (skreenshotlardagi PIP kabi).
+    compositeRef.current?.stop();
+    compositeRef.current = createCompositeRecordingStream({
+      getScreenVideo: () => screenVideoRef.current,
+      getCameraVideo: () => cameraVideoRef.current,
+      audioTrack: audioTrack || null,
+    });
+    const combined = compositeRef.current?.stream
+      || new MediaStream(audioTrack ? [screenTrack, audioTrack] : [screenTrack]);
     const mimeType = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
       .find((type) => MediaRecorder.isTypeSupported(type)) || '';
     recorderStoppingRef.current = false;
@@ -333,17 +376,21 @@ export const useWritingProctoringOnline = () => {
       const worker = new Worker(workerUrl);
       URL.revokeObjectURL(workerUrl);
       worker.onmessage = () => {
-        if (activeRef.current) captureSnapshot('Writing periodic snapshot');
+        if (!activeRef.current) return;
+        captureHealth.tick(SNAPSHOT_INTERVAL_MS);
+        captureSnapshot('Writing periodic snapshot');
       };
       worker.postMessage('start');
       workerRef.current = worker;
     } catch {
       // Worker mavjud bo'lmasa violation screenshotlari baribir ishlaydi.
     }
-  }, [captureSnapshot]);
+  }, [captureSnapshot, captureHealth]);
 
   const cleanupMedia = useCallback(() => {
     stopPeriodicSnapshots();
+    compositeRef.current?.stop();
+    compositeRef.current = null;
     delayedCaptureTimersRef.current.forEach((timer) => clearTimeout(timer));
     delayedCaptureTimersRef.current.clear();
     cameraStreamRef.current?.getTracks?.().forEach((track) => track.stop());
@@ -400,19 +447,46 @@ export const useWritingProctoringOnline = () => {
     screenVideoRef.current = screenS ? createHiddenVideo(screenS) : null;
 
     try {
-      const response = await api.proctorStartSession({
-        fullName,
-        passportId,
-        examUrl: WRITING_APP_URL,
-      });
-      const sessionId = response?.session_id || response?.id;
+      // Sahifa qayta yuklangan bo'lsa avvalgi sessiyada davom etamiz.
+      let sessionId = null;
+      let resumed = false;
+      const saved = readResumableSession(RESUME_KIND, { passportId });
+      if (saved) {
+        try {
+          const existing = await api.proctorGetSession(saved.sessionId);
+          const data = existing?.data || existing || {};
+          const remoteStatus = String(data.status || data.exam_status || data.state || '').toLowerCase();
+          const remotePassport = String(data.passport_id || data.passport || '').toUpperCase();
+          if (remoteStatus === 'active'
+            && (!remotePassport || remotePassport === String(passportId || '').toUpperCase())) {
+            sessionId = saved.sessionId;
+            resumed = true;
+          }
+        } catch { /* topilmadi — yangi sessiya ochamiz */ }
+      }
+      if (!sessionId) {
+        const response = await api.proctorStartSession({
+          fullName,
+          passportId,
+          examUrl: WRITING_APP_URL,
+        });
+        sessionId = response?.session_id || response?.id;
+      }
       if (!sessionId) throw new Error('Monitoring API did not return session_id.');
       sessionIdRef.current = sessionId;
       activeRef.current = true;
       warningsRef.current = 0;
       localMetaRef.current = { fullName, passportId };
       localEventsRef.current.clear();
-      logEvent('writing_monitoring_started', 'Online Writing monitoring started', 'info');
+      captureHealth.reset();
+      saveResumableSession(RESUME_KIND, { sessionId, fullName, passportId });
+      logEvent(
+        resumed ? 'writing_monitoring_resumed' : 'writing_monitoring_started',
+        resumed
+          ? 'Online Writing monitoring resumed in the same session after a reload'
+          : 'Online Writing monitoring started',
+        'info'
+      );
       startPeriodicSnapshots();
       startRecorder();
       setMonitoringStatus('active');
@@ -426,11 +500,29 @@ export const useWritingProctoringOnline = () => {
       setMonitoringStatus('error');
       throw error;
     }
-  }, [captureSnapshot, cleanupMedia, logEvent, startPeriodicSnapshots, startRecorder]);
+  }, [captureSnapshot, captureHealth, cleanupMedia, logEvent, startPeriodicSnapshots, startRecorder]);
 
   useEffect(() => {
     cancelProctorMediaRelease();
     return () => scheduleProctorMediaRelease();
+  }, []);
+
+  /* Sahifa yopilishi/qayta yuklanishi — unload paytida fetch bekor qilinadi,
+     shuning uchun sendBeacon. Sessiya `active` bo'lib qoladi: student qaytsa
+     o'sha sessiyada davom etadi, log'da esa uzilish belgisi turadi. */
+  useEffect(() => {
+    const onPageHide = () => {
+      const sid = sessionIdRef.current;
+      if (!sid || !activeRef.current) return;
+      api.proctorBeaconEvent(sid, {
+        type: 'writing_page_closed',
+        message: 'Online Writing page was closed or reloaded — monitoring stopped',
+        severity: 'warning',
+        eventId: makeEventId('writing_page_closed'),
+      });
+    };
+    window.addEventListener('pagehide', onPageHide);
+    return () => window.removeEventListener('pagehide', onPageHide);
   }, []);
 
   const finishMonitoring = useCallback(async () => {
@@ -447,6 +539,7 @@ export const useWritingProctoringOnline = () => {
     persistLocal();
     stopPeriodicSnapshots();
     await stopRecorder();
+    uploadFailureReporter.flush();
     while (pendingRequestsRef.current.size) {
       await Promise.allSettled([...pendingRequestsRef.current]);
     }
@@ -454,11 +547,12 @@ export const useWritingProctoringOnline = () => {
       await api.proctorFinishSession(sessionIdRef.current, { warnings: warningsRef.current });
     } catch { /* essay submission must still finish locally */ }
     try { sessionStorage.removeItem('writing_proctor_session_id'); } catch { /* ignore */ }
+    clearResumableSession(RESUME_KIND);
     sessionIdRef.current = null;
     eventMetaRef.current.clear();
     cleanupMedia();
     setMonitoringStatus('finished');
-  }, [cleanupMedia, persistLocal, stopPeriodicSnapshots, stopRecorder]);
+  }, [cleanupMedia, persistLocal, stopPeriodicSnapshots, stopRecorder, uploadFailureReporter]);
 
   useEffect(() => () => {
     activeRef.current = false;

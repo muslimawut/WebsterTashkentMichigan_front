@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../api/api';
 import { analyzeProctoringSession, analyzeScreens, isAiProctorAvailable } from '../utils/aiProctor';
 import { getSession as getLocalSession } from '../utils/proctorStore';
+import { clearAuthSession } from '../utils/authSession';
 
 /*
   Proctor (nazoratchi) monitoring sahifasi — /proctoring/monitor
@@ -62,10 +63,27 @@ const eventKey = (event) => event.id
   ? `id:${event.id}`
   : `fallback:${event.type}|${event.time || ''}|${event.message || ''}`;
 
-const newestFirst = (a, b) => {
+// Activity log imtihon boshidan oxirigacha o'qiladi: eng eski hodisa yuqorida.
+// Backend yangisidan eskisiga qaytaradi, lokal nusxa esa yig'ilgan tartibda —
+// shuning uchun ko'rsatishdan oldin har doim shu tartibga solamiz.
+const oldestFirst = (a, b) => {
   const at = new Date(a.time || 0).getTime();
   const bt = new Date(b.time || 0).getTime();
-  return (Number.isFinite(bt) ? bt : 0) - (Number.isFinite(at) ? at : 0);
+  return (Number.isFinite(at) ? at : 0) - (Number.isFinite(bt) ? bt : 0);
+};
+
+const inExamOrder = (list) => [...(list || [])].sort(oldestFirst);
+
+// `active`, lekin uzoq vaqt hodisa yo'q → student sahifani yopgan/uzilgan.
+// Sessiya `/finish` olmagani uchun statusning o'zi buni ko'rsatmaydi.
+const STALE_SESSION_MS = 10 * 60 * 1000;
+
+const fmtGap = (ms) => {
+  const minutes = Math.round(ms / 60000);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `${hours} h ${rest} min` : `${hours} h`;
 };
 
 const screenReviewKey = (sessionId) => `proctor_screen_review_${sessionId}`;
@@ -133,6 +151,17 @@ const cheatingReviewPayload = (sessionId, review) => ({
 const SUSPICIOUS_TYPES = new Set(['gaze_suspicious']);
 
 const isSuspiciousEvent = (event) => SUSPICIOUS_TYPES.has(String(event?.type || '').toLowerCase());
+
+// Monitoringning o'zidagi nosozlik — cheating emas. Student tomonda dalil
+// olindi, lekin serverga yetib bormadi (yoki kadr olish sekinlashdi). Buni
+// ajratib ko'rsatmasak, proctor "dalil yo'q" ni "buzilish yo'q" deb o'qiydi.
+const MONITORING_ISSUE_TYPES = new Set([
+  'screenshot_upload_failed',
+  'clip_upload_failed',
+  'capture_throttled',
+]);
+
+const isMonitoringIssue = (event) => MONITORING_ISSUE_TYPES.has(String(event?.type || '').toLowerCase());
 
 const GAZE_CHEATING_TYPES = new Set([
   'gaze_away',
@@ -225,6 +254,67 @@ const isAiAnalyzed = (session) => Boolean(
   pick(session, ['ai_analyzed', 'aiAnalyzed', 'analyzed'], false)
 );
 
+/* ── Sessiyalarni student bo'yicha guruhlash ─────────────────────
+   Bitta student bir kechada bir necha sessiya ochishi mumkin (sahifa qayta
+   yuklansa ilova yangi sessiya boshlaydi). Ro'yxatda ular alohida qatorlar
+   bo'lib yotsa, proctor bir odamning imtihonini bo'lak-bo'lak izlashiga
+   to'g'ri keladi — shuning uchun passport ID bo'yicha yig'amiz. */
+const sessionTime = (session) => {
+  const value = new Date(pick(session, ['created_at', 'started_at'], 0)).getTime();
+  return Number.isFinite(value) ? value : 0;
+};
+
+const studentKey = (session) => {
+  const passport = String(pick(session, ['passport_id', 'passport'], '')).trim().toUpperCase();
+  if (passport) return `passport:${passport}`;
+  // Passport yo'q bo'lsa ism bo'yicha (registr/probel farqisiz), u ham bo'lmasa
+  // sessiya o'zi alohida guruh bo'lib qoladi.
+  const name = String(pick(session, ['full_name', 'name'], '')).trim().toLowerCase().replace(/\s+/g, ' ');
+  return name ? `name:${name}` : `session:${pick(session, ['id', 'session_id'], '')}`;
+};
+
+const sessionKindOf = (session) => session._sessionKind || getSessionKind(session) || 'metrica';
+
+// Guruh ichida bo'limlar shu tartibda: avval Metrica imtihoni, keyin Writing.
+const KIND_ORDER = ['metrica', 'writing'];
+
+const splitByKind = (sessions) => {
+  const byKind = new Map();
+  sessions.forEach((session) => {
+    const kind = sessionKindOf(session);
+    if (!byKind.has(kind)) byKind.set(kind, []);
+    byKind.get(kind).push(session);
+  });
+  const known = KIND_ORDER.filter((kind) => byKind.has(kind));
+  const rest = [...byKind.keys()].filter((kind) => !KIND_ORDER.includes(kind));
+  return [...known, ...rest].map((kind) => ({ kind, sessions: byKind.get(kind) }));
+};
+
+const groupSessionsByStudent = (list) => {
+  const groups = new Map();
+  (list || []).forEach((session) => {
+    const key = studentKey(session);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(session);
+  });
+
+  return [...groups.entries()]
+    .map(([key, items]) => {
+      const sessions = [...items].sort((a, b) => sessionTime(b) - sessionTime(a));
+      const latest = sessions[0];
+      return {
+        key,
+        sessions,
+        sections: splitByKind(sessions),
+        name: pick(latest, ['full_name', 'name'], key),
+        passport: pick(latest, ['passport_id', 'passport'], ''),
+        latestAt: sessionTime(latest),
+        analyzed: sessions.filter(isAiAnalyzed).length,
+      };
+    })
+    .sort((a, b) => b.latestAt - a.latestAt);
+};
+
 // Backend bo'lmasa — student sessiyasi localStorage'ga yozgan yig'ilgan logdan o'qiymiz
 const readLocalSession = (id) => {
   try {
@@ -287,6 +377,46 @@ const ProctorMonitor = () => {
   const [loadedAt, setLoadedAt] = useState(null);
   const [idInput, setIdInput] = useState(sessionId);
   const [mediaPreview, setMediaPreview] = useState(null);
+  const [openGroups, setOpenGroups] = useState(() => new Set());
+
+  const sessionGroups = useMemo(() => groupSessionsByStudent(sessions), [sessions]);
+  const toggleGroup = useCallback((key) => {
+    setOpenGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
+  // Guruh ichidagi sessiya qatori: ism/passport yuqoridagi student sarlavhasida,
+  // imtihon turi esa bo'lim sarlavhasida turgani uchun bu yerda takrorlanmaydi.
+  const renderSessionItem = useCallback((s) => {
+    const id = pick(s, ['id', 'session_id'], '');
+    const createdAt = fmtSessionDate(pick(s, ['created_at', 'started_at'], ''));
+    return (
+      <button
+        key={id}
+        className="pm-list-item is-nested"
+        onClick={() => setParams({ session: String(id) })}
+      >
+        <span className="pm-list-person">
+          <span className="pm-list-heading">
+            <span className="pm-list-name">{createdAt || id}</span>
+            <span className={`pm-session-badge ${isAiAnalyzed(s) ? 'is-analyzed' : 'is-unanalyzed'}`}>
+              {isAiAnalyzed(s) ? '✓ AI analyzed' : 'Not analyzed'}
+            </span>
+          </span>
+          <span className="pm-list-meta">
+            <span>Status: {pick(s, ['status', 'exam_status', 'state'], '—')}</span>
+            <span className="pm-list-separator">•</span>
+            <span>Warnings: {pick(s, ['warnings', 'warning_count'], 0)}</span>
+          </span>
+        </span>
+        <span className="pm-list-id">{id}</span>
+      </button>
+    );
+  }, [setParams]);
 
   useEffect(() => {
     if (!mediaPreview) return undefined;
@@ -399,7 +529,7 @@ const ProctorMonitor = () => {
       const local = await loadLocal();
       if (local) {
         setSession(local.meta);
-        setEvents(local.events);
+        setEvents(inExamOrder(local.events));
         setError('');
         setLoadedAt(new Date());
         return;
@@ -439,7 +569,7 @@ const ProctorMonitor = () => {
         const localOnly = (local?.events || []).filter((event) => (
           (event.image || event.clip) && !remoteKeys.has(eventKey(event))
         ));
-        const completeEvents = [...enrichedEvents, ...localOnly].sort(newestFirst);
+        const completeEvents = inExamOrder([...enrichedEvents, ...localOnly]);
         setSession(data);
         setEvents(completeEvents);
         setError('');
@@ -452,7 +582,7 @@ const ProctorMonitor = () => {
       if (remoteStatus || remoteId) {
         const local = await loadLocal();
         setSession(data);
-        setEvents(local?.events || []);
+        setEvents(inExamOrder(local?.events));
         setError('');
         setLoadedAt(new Date());
         return;
@@ -463,7 +593,7 @@ const ProctorMonitor = () => {
       const local = await loadLocal();
       if (local) {
         setSession(local.meta);
-        setEvents(local.events);
+        setEvents(inExamOrder(local.events));
         setError('');
         setLoadedAt(new Date());
         return;
@@ -501,6 +631,10 @@ const ProctorMonitor = () => {
     objectUrlsRef.current = [];
   }, []);
 
+  const monitoringIssues = events.filter(isMonitoringIssue);
+  // Oxirgi hodisa (log eskidan yangiga tartiblangan) — uzilishni shu bo'yicha aniqlaymiz.
+  const lastEventAt = events.length ? new Date(events[events.length - 1].time || 0).getTime() : 0;
+  const idleFor = lastEventAt ? Date.now() - lastEventAt : 0;
   const warnings = session ? pick(session, ['warnings', 'warning_count'], events.filter((e) => e.severity === 'warning').length) : 0;
   const status = session ? pick(session, ['status', 'exam_status', 'state'], '—') : '—';
   const student = session ? pick(session, ['full_name', 'student', 'name'], '') : '';
@@ -634,7 +768,10 @@ const ProctorMonitor = () => {
       .filter((shot, index, list) => list.findIndex((item) => item.image === shot.image) === index)
       // TabProctor shu kadrlar ichidan vizual takrorlarni chiqarib, 16 ta turli
       // sahifani tahlil qiladi. 4 ta bilan cheklash YouTube kabi eskiroq kadrni yo'qotardi.
-      .slice(0, 60);
+      .slice(0, 60)
+      // Tanlab olingandan keyin vaqt bo'yicha to'g'ri tartibga qaytaramiz — AI
+      // kadrlarni imtihon oqimi bo'yicha ko'radi (activity log bilan bir xil).
+      .sort((a, b) => new Date(a.time || 0).getTime() - new Date(b.time || 0).getTime());
     if (!shots.length) return;
     setScreenShots(shots);
     setScreenLoading(true);
@@ -727,6 +864,14 @@ const ProctorMonitor = () => {
             {loading ? '↻ Refreshing…' : '↻ Refresh'}
           </button>
         )}
+        {/* Umumiy kompyuterda proctor sessiyasini yopish uchun. Reload'dan keyin
+            ProctorGate yana login formani ko'rsatadi. */}
+        <button
+          className="pm-signout"
+          onClick={() => { clearAuthSession(); window.location.reload(); }}
+        >
+          Sign out
+        </button>
       </header>
 
       <main className="pm-main">
@@ -747,30 +892,58 @@ const ProctorMonitor = () => {
             {sessions.length === 0 ? (
               <p className="pm-empty">No sessions, or backend not connected.</p>
             ) : (
-              sessions.map((s) => {
-                const id = pick(s, ['id', 'session_id'], '');
-                const passportId = pick(s, ['passport_id', 'passport'], '');
-                const createdAt = fmtSessionDate(pick(s, ['created_at', 'started_at'], ''));
-                const kind = s._sessionKind || getSessionKind(s) || 'metrica';
-                const kindMeta = sessionKindMeta[kind] || sessionKindMeta.metrica;
+              sessionGroups.map((group) => {
+                const isOpen = openGroups.has(group.key);
                 return (
-                  <button key={id} className="pm-list-item" onClick={() => setParams({ session: String(id) })}>
-                    <span className="pm-list-person">
-                      <span className="pm-list-heading">
-                        <span className="pm-list-name">{pick(s, ['full_name', 'name'], id)}</span>
-                        <span className={`pm-session-badge ${kindMeta.className}`}>{kindMeta.label}</span>
-                        <span className={`pm-session-badge ${isAiAnalyzed(s) ? 'is-analyzed' : 'is-unanalyzed'}`}>
-                          {isAiAnalyzed(s) ? '✓ AI analyzed' : 'Not analyzed'}
+                  <div key={group.key} className={`pm-group ${isOpen ? 'is-open' : ''}`}>
+                    <button
+                      type="button"
+                      className="pm-list-item pm-group-head"
+                      onClick={() => toggleGroup(group.key)}
+                      aria-expanded={isOpen}
+                    >
+                      <span className="pm-list-person">
+                        <span className="pm-list-heading">
+                          <span className="pm-list-name">{group.name}</span>
+                          {group.sections.map((section) => {
+                            const meta = sessionKindMeta[section.kind] || sessionKindMeta.metrica;
+                            return (
+                              <span key={section.kind} className={`pm-session-badge ${meta.className}`}>
+                                {section.sessions.length} {meta.label}
+                              </span>
+                            );
+                          })}
+                          <span className={`pm-session-badge ${group.analyzed === group.sessions.length ? 'is-analyzed' : 'is-unanalyzed'}`}>
+                            {group.analyzed}/{group.sessions.length} AI analyzed
+                          </span>
+                        </span>
+                        <span className="pm-list-meta">
+                          {group.passport && <span>Passport: {group.passport}</span>}
+                          {group.passport && group.latestAt > 0 && <span className="pm-list-separator">•</span>}
+                          {group.latestAt > 0 && <span>Latest: {fmtSessionDate(group.latestAt)}</span>}
                         </span>
                       </span>
-                      <span className="pm-list-meta">
-                        {passportId && <span>Passport: {passportId}</span>}
-                        {passportId && createdAt && <span className="pm-list-separator">•</span>}
-                        {createdAt && <span>Created: {createdAt}</span>}
-                      </span>
-                    </span>
-                    <span className="pm-list-id">{id}</span>
-                  </button>
+                      <span className="pm-group-chevron" aria-hidden>▾</span>
+                    </button>
+                    {isOpen && (
+                      <div className="pm-group-body">
+                        {group.sections.map((section) => {
+                          const meta = sessionKindMeta[section.kind] || sessionKindMeta.metrica;
+                          return (
+                            <div key={section.kind} className="pm-group-section">
+                              <p className="pm-group-section-title">
+                                <span className={`pm-session-badge ${meta.className}`}>{meta.label}</span>
+                                <span>
+                                  {section.sessions.length} session{section.sessions.length === 1 ? '' : 's'}
+                                </span>
+                              </p>
+                              {section.sessions.map((s) => renderSessionItem(s, true))}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 );
               })
             )}
@@ -786,10 +959,34 @@ const ProctorMonitor = () => {
               {student && <p className="pm-student">{student}{passport ? ` · ${passport}` : ''}</p>}
               <p className="pm-sid">ID: {sessionId}</p>
               <div className="pm-tiles">
-                <div className="pm-tile"><span>Status</span><b>{status}</b></div>
+                <div className="pm-tile">
+                  <span>Status</span>
+                  <b>
+                    {status}
+                    {String(status).toLowerCase() === 'active' && idleFor > STALE_SESSION_MS && (
+                      <span className="pm-stale-badge" title={`No events for ${fmtGap(idleFor)}`}>
+                        interrupted
+                      </span>
+                    )}
+                  </b>
+                </div>
                 <div className={`pm-tile ${warnings > 0 ? 'is-bad' : ''}`}><span>Warnings</span><b>{warnings}</b></div>
                 <div className="pm-tile"><span>Events</span><b>{events.length}</b></div>
               </div>
+              {String(status).toLowerCase() === 'active' && idleFor > STALE_SESSION_MS && (
+                <div className="pm-issue-note is-stale">
+                  <b>Session never finished.</b> The last event arrived {fmtGap(idleFor)} ago — the student closed or
+                  reloaded the proctoring page instead of pressing Finish. If they return with the same passport, the
+                  log continues in this session.
+                </div>
+              )}
+              {monitoringIssues.length > 0 && (
+                <div className="pm-issue-note">
+                  <b>Evidence may be incomplete.</b> The student's device reported {monitoringIssues.length} monitoring
+                  issue{monitoringIssues.length === 1 ? '' : 's'} (failed uploads or throttled capture). Missing
+                  screenshots here do not mean the student was clean — see the “Monitoring issue” entries in the log.
+                </div>
+              )}
               {error && <p className="pm-err">{error}</p>}
             </section>
 
@@ -974,12 +1171,15 @@ const ProctorMonitor = () => {
                   {events.map((ev, i) => (
                     <li
                       key={i}
-                      className={isSuspiciousEvent(ev) ? 'is-suspicious' : (ev.severity === 'warning' ? 'is-warn' : '')}
+                      className={isMonitoringIssue(ev)
+                        ? 'is-issue'
+                        : (isSuspiciousEvent(ev) ? 'is-suspicious' : (ev.severity === 'warning' ? 'is-warn' : ''))}
                     >
                       <span className="pm-dot" />
                       <div>
                         <p className="pm-msg">
                           {isSuspiciousEvent(ev) && <span className="pm-susp-badge">Suspicious · review</span>}
+                          {isMonitoringIssue(ev) && <span className="pm-issue-badge">Monitoring issue</span>}
                           {ev.message || ev.type}
                         </p>
                         {ev.image && (
@@ -1052,6 +1252,8 @@ const CSS = `
 .pm-refresh{color:#cfe2ff;background:rgba(96,165,250,.14);border:1px solid rgba(96,165,250,.34);padding:8px 14px;border-radius:11px;font-size:13px;font-weight:700;cursor:pointer;}
 .pm-refresh:hover:not(:disabled){color:#fff;background:rgba(96,165,250,.24);}
 .pm-refresh:disabled{opacity:.55;cursor:not-allowed;}
+.pm-signout{color:#9fb6d6;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);padding:8px 14px;border-radius:11px;font-size:13px;font-weight:600;cursor:pointer;}
+.pm-signout:hover{color:#fecaca;background:rgba(239,68,68,.12);border-color:rgba(248,113,113,.35);}
 .pm-main{max-width:1100px;margin:0 auto;padding:24px 22px 60px;}
 .pm-picker{display:flex;gap:10px;margin-bottom:22px;}
 .pm-picker input{flex:1;background:rgba(255,255,255,.04);border:1.5px solid rgba(255,255,255,.1);border-radius:12px;padding:11px 14px;color:#eef4ff;font-size:14px;outline:none;}
@@ -1075,6 +1277,16 @@ const CSS = `
 .pm-list-meta{display:flex;align-items:center;flex-wrap:wrap;gap:6px;font-size:11.5px;font-weight:500;color:#8299bb;}
 .pm-list-separator{color:#415574;}
 .pm-list-id{flex-shrink:0;font-size:12px;color:#67809f;font-weight:500;}
+.pm-group{margin-bottom:8px;}
+.pm-group-head{margin-bottom:0;}
+.pm-group.is-open .pm-group-head{background:rgba(255,255,255,.07);border-color:rgba(125,211,252,.3);border-bottom-left-radius:0;border-bottom-right-radius:0;}
+.pm-group-chevron{flex-shrink:0;margin-left:10px;color:#7d95b8;font-size:13px;transition:transform .18s ease;}
+.pm-group.is-open .pm-group-chevron{transform:rotate(180deg);color:#7dd3fc;}
+.pm-group-body{padding:10px 0 4px 14px;margin-bottom:8px;border-left:2px solid rgba(125,211,252,.28);}
+.pm-group-section{margin-bottom:6px;}
+.pm-group-section-title{display:flex;align-items:center;gap:8px;margin:0 0 6px 2px;font-size:11px;font-weight:700;color:#7d95b8;}
+.pm-list-item.is-nested{background:rgba(255,255,255,.028);padding:11px 14px;}
+.pm-list-item.is-nested .pm-list-name{font-size:13px;color:#c3d4ee;}
 @media(max-width:640px){.pm-list-item{align-items:flex-start;flex-direction:column}.pm-list-id{font-size:11px}.pm-list-meta{gap:4px}.pm-list-separator{display:none}.pm-list-meta span:not(.pm-list-separator){width:100%}}
 .pm-empty{font-size:14px;color:#6f88ac;}
 .pm-grid{display:grid;grid-template-columns:1fr;gap:20px;}
@@ -1143,6 +1355,14 @@ const CSS = `
 .pm-timeline li.is-suspicious .pm-dot{background:#fbbf24;box-shadow:0 0 10px rgba(251,191,36,.7);}
 .pm-timeline li.is-suspicious .pm-msg{color:#fde3a7;font-weight:600;}
 .pm-susp-badge{display:inline-block;margin-right:8px;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#3a2b05;background:#fbbf24;vertical-align:1px;}
+.pm-timeline li.is-issue .pm-dot{background:#38bdf8;box-shadow:0 0 10px rgba(56,189,248,.6);}
+.pm-timeline li.is-issue .pm-msg{color:#bae6fd;}
+.pm-issue-badge{display:inline-block;margin-right:8px;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#04283d;background:#7dd3fc;vertical-align:1px;}
+.pm-issue-note{margin-top:12px;padding:10px 12px;border:1px solid rgba(56,189,248,.35);border-radius:11px;background:rgba(14,165,233,.1);color:#bae6fd;font-size:12.5px;line-height:1.5;}
+.pm-issue-note b{color:#e0f2fe;}
+.pm-issue-note.is-stale{border-color:rgba(251,191,36,.35);background:rgba(251,191,36,.09);color:#fde3a7;}
+.pm-issue-note.is-stale b{color:#fde68a;}
+.pm-stale-badge{display:inline-block;margin-left:8px;padding:2px 8px;border-radius:999px;font-size:9.5px;font-weight:850;letter-spacing:.06em;text-transform:uppercase;color:#3a2b05;background:#fbbf24;vertical-align:2px;}
 .pm-time{font-size:11.5px;color:#67809f;margin-top:3px;}
 .pm-shot{display:block;margin-top:8px;width:260px;max-width:100%;padding:0;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,.14);background:#020711;cursor:zoom-in;text-align:left;}
 .pm-shot:hover{border-color:rgba(125,211,252,.7);box-shadow:0 10px 28px -15px rgba(56,189,248,.7);}

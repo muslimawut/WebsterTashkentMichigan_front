@@ -25,6 +25,7 @@ import WritingTestOnline from './components/WritingTestOnline';
 import WritingExam from './components/WritingExam';
 import ProctoringExam from './components/ProctoringExam';
 import ProctorMonitor from './components/ProctorMonitor';
+import ProctorGate from './components/ProctorGate';
 import Results from './components/ResultsPage';
 import Chatbot from './components/Chatbot';
 import AnnouncementBar from './components/AnnouncementBar';
@@ -214,10 +215,16 @@ export default function App() {
             element={<ProctoringExam />}
           />
 
-          {/* Proctor Monitor (nazoratchi — status + activity log) */}
+          {/* Proctor Monitor (nazoratchi — status + activity log).
+              Faqat xodimlar uchun: ProctorGate is_staff'ni tekshiradi va
+              kirmagan bo'lsa shu sahifaning o'zida login formani ko'rsatadi. */}
           <Route
             path="/proctoring/monitor"
-            element={<ProctorMonitor />}
+            element={(
+              <ProctorGate>
+                <ProctorMonitor />
+              </ProctorGate>
+            )}
           />
 
           {/* Results Route */}

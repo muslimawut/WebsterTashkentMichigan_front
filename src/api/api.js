@@ -18,6 +18,11 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 // Proctoring backend URL ataylab manual: .env qiymatiga bog'liq emas.
 const PROCTORING_API_BASE_URL = 'https://mept.webster.uz/api/v1';
 
+// Media yuklash timeoutlari: sekin kanalda so'rov cheksiz osilib turmasin.
+// Skreenshot ~60-400 KB, klip ~1-3 MB — shu sabab klipga uzunroq vaqt.
+const SCREENSHOT_UPLOAD_TIMEOUT_MS = 45000;
+const CLIP_UPLOAD_TIMEOUT_MS = 120000;
+
 const PROCTORING_FIELD_LABELS = {
   full_name: 'Full name',
   passport_id: 'Passport ID',
@@ -84,6 +89,7 @@ const proctoringRequest = async (path, options = {}) => {
   const {
     requireAuth: _requireAuth,
     reportToTelegram = false,
+    timeoutMs = 0,
     ...requestOptions
   } = options;
   const headers = new Headers(requestOptions.headers || {});
@@ -91,26 +97,44 @@ const proctoringRequest = async (path, options = {}) => {
   const method = String(requestOptions.method || 'GET').toUpperCase();
   let response;
 
+  // Media yuklash sekin kanalda soatlab osilib qolishi mumkin edi (fetch'da
+  // standart timeout yo'q) — tab yopilguncha na yuklanardi, na xato berardi.
+  // Timeout bilan u tez yiqiladi va yuklash navbati qayta urinib ko'radi.
+  const controller = timeoutMs > 0 && typeof AbortController !== 'undefined' && !requestOptions.signal
+    ? new AbortController()
+    : null;
+  const abortTimer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+
   try {
     response = await fetch(url, {
       ...requestOptions,
       headers,
       credentials: 'include',
+      ...(controller ? { signal: controller.signal } : {}),
     });
   } catch (error) {
+    const timedOut = Boolean(controller) && error?.name === 'AbortError';
+    const failure = timedOut
+      ? Object.assign(
+        new Error(`Proctoring request timed out after ${Math.round(timeoutMs / 1000)}s.`),
+        { timeout: true }
+      )
+      : error;
     if (reportToTelegram) {
       void reportErrorToTelegram({
-        message: error?.message || 'Proctoring network request failed.',
+        message: failure?.message || 'Proctoring network request failed.',
         method,
         url,
         details: [
           `Network response was not received. Browser online: ${navigator.onLine ? 'yes' : 'no'}.`,
-          error?.stack || '',
+          failure?.stack || '',
         ].filter(Boolean).join('\n'),
         payload: requestOptions.body,
       });
     }
-    throw error;
+    throw failure;
+  } finally {
+    if (abortTimer) clearTimeout(abortTimer);
   }
 
   const contentType = response.headers.get('content-type') || '';
@@ -367,8 +391,10 @@ class ApiService {
     return axiosInstance.post('/users/token/refresh', null, { skipAuth: true });
   }
 
-  async getProfile() {
-    return axiosInstance.get('/users/profile');
+  // silent: kirmagan foydalanuvchida 401 normal holat (masalan ProctorGate
+  // kirish tekshiruvi) — bunda global toast va Telegram xabari kerak emas.
+  async getProfile({ silent = false } = {}) {
+    return axiosInstance.get('/users/profile', silent ? { skipErrorToast: true } : undefined);
   }
 
   async updateProfile(userData) {
@@ -507,10 +533,32 @@ class ApiService {
     });
   }
 
+  // Sahifa yopilayotganda oddiy fetch bekor qilinadi — sendBeacon esa brauzer
+  // tomonidan navbatga qo'yilib baribir yuboriladi. Faqat kichik JSON event
+  // uchun (media emas). Production'da app va API bitta origin'da (mept.webster.uz)
+  // bo'lgani uchun application/json preflight muammosi chiqmaydi.
+  proctorBeaconEvent(sessionId, { type, message, severity = 'warning', eventId, clientTime } = {}) {
+    if (!sessionId || typeof navigator === 'undefined' || typeof navigator.sendBeacon !== 'function') return false;
+    const url = `${PROCTORING_API_BASE_URL}/proctoring/sessions/${encodeURIComponent(sessionId)}/events`;
+    try {
+      const body = new Blob([JSON.stringify({
+        event_id: eventId || undefined,
+        type,
+        message,
+        severity,
+        client_time: clientTime || new Date().toISOString(),
+      })], { type: 'application/json' });
+      return navigator.sendBeacon(url, body);
+    } catch {
+      return false;
+    }
+  }
+
   // Qo'l ko'tarilganda (yoki boshqa hodisada) olingan skrinshotni yuboramiz.
   async proctorUploadScreenshot(sessionId, { image, reason, eventId, clientTime }) {
     return proctoringRequest(`/proctoring/sessions/${encodeURIComponent(sessionId)}/screenshot`, {
       method: 'POST',
+      timeoutMs: SCREENSHOT_UPLOAD_TIMEOUT_MS,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         event_id: eventId || undefined,
@@ -531,6 +579,7 @@ class ApiService {
     // Content-Type qo'lda berilmaydi — multipart boundary'ni browser qo'shadi.
     return proctoringRequest(`/proctoring/sessions/${encodeURIComponent(sessionId)}/clip`, {
       method: 'POST',
+      timeoutMs: CLIP_UPLOAD_TIMEOUT_MS,
       body: fd,
     });
   }
