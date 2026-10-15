@@ -1207,8 +1207,15 @@ const ProctoringExam = () => {
           sid = saved.sessionId;
           resumed = true;
         }
-      } catch {
-        // Sessiya topilmadi yoki backend javob bermadi — pastda yangisini ochamiz.
+      } catch (error) {
+        // Sessiya tafsiloti endi faqat staff uchun — nomzodga 401/403 qaytadi.
+        // Bunda lokal yozuvga ishonamiz: u imtihon tugaganda o'chiriladi,
+        // 2 soatdan keyin eskiradi va passport bo'yicha tekshirilgan.
+        if (error?.status === 401 || error?.status === 403) {
+          sid = saved.sessionId;
+          resumed = true;
+        }
+        // Aks holda (404 yoki tarmoq xatosi) pastda yangi sessiya ochamiz.
       }
     }
 

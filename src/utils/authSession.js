@@ -8,6 +8,7 @@ export const clearAuthSession = () => {
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('userLoggedIn');
     localStorage.removeItem('currentPage');
+    sessionStorage.removeItem('proctorAccessToken');
   } catch {
     // localStorage mavjud bo'lmasa ham logout oqimi davom etadi.
   }

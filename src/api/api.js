@@ -15,8 +15,9 @@ try {
 } catch { /* localStorage mavjud emas */ }
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
-// Proctoring backend URL ataylab manual: .env qiymatiga bog'liq emas.
-const PROCTORING_API_BASE_URL = 'https://mept.webster.uz/api/v1';
+// Proctoring ham asosiy API bilan bir xil base URL'dan (.env) foydalanadi.
+// Yo'llar '/' bilan boshlanadi — oxiridagi '/' ikki marta bo'lmasligi uchun olib tashlanadi.
+const PROCTORING_API_BASE_URL = String(API_BASE_URL || '').replace(/\/+$/, '');
 
 // Media yuklash timeoutlari: sekin kanalda so'rov cheksiz osilib turmasin.
 // Skreenshot ~60-400 KB, klip ~1-3 MB — shu sabab klipga uzunroq vaqt.
@@ -82,17 +83,59 @@ const stringifyProctoringDetails = (data) => {
   }
 };
 
+// Proctor monitor endpointlari (sessions ro'yxati/tafsiloti, cheating events)
+// staff uchun yopiq va `Authorization: Bearer <access_token>` talab qiladi.
+// Access token login/refresh javobidan olinadi; sahifa yangilansa ham qolishi
+// uchun sessionStorage'da (tab yopilganda o'chadi).
+const PROCTOR_ACCESS_TOKEN_KEY = 'proctorAccessToken';
+
+const extractAccessToken = (payload) => {
+  if (!payload || typeof payload !== 'object') return null;
+  const candidates = [
+    payload.access,
+    payload.access_token,
+    payload.token,
+    payload.tokens?.access,
+    payload.data?.access,
+    payload.data?.access_token,
+    payload.data?.tokens?.access,
+  ];
+  return candidates.find((value) => typeof value === 'string' && value) || null;
+};
+
+const storeProctorAccessToken = (payload) => {
+  const token = extractAccessToken(payload);
+  if (token) {
+    try { sessionStorage.setItem(PROCTOR_ACCESS_TOKEN_KEY, token); } catch { /* unavailable */ }
+  }
+  return token;
+};
+
+const readProctorAccessToken = () => {
+  try { return sessionStorage.getItem(PROCTOR_ACCESS_TOKEN_KEY); } catch { return null; }
+};
+
 // Proctoring backend guide bo'yicha public va asosiy /api/v1 servisidan alohida.
 // fetch helper JSON/text response hamda DRF validation xatolarini saqlab beradi.
 const proctoringRequest = async (path, options = {}) => {
-  // Auth httpOnly cookie orqali (credentials: 'include') — qo'lda Bearer kerak emas.
   const {
-    requireAuth: _requireAuth,
+    requireAuth = false,
+    _retried = false,
     reportToTelegram = false,
     timeoutMs = 0,
     ...requestOptions
   } = options;
   const headers = new Headers(requestOptions.headers || {});
+  let refreshed = _retried;
+  if (requireAuth) {
+    // Token yo'q bo'lsa (masalan cookie bilan oldin kirilgan), refresh orqali olamiz.
+    let accessToken = readProctorAccessToken();
+    if (!accessToken && !refreshed) {
+      refreshed = true;
+      try { accessToken = storeProctorAccessToken(await refreshAuthToken()); } catch { /* 401 quyida */ }
+    }
+    if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`);
+  }
   const url = `${PROCTORING_API_BASE_URL}${path}`;
   const method = String(requestOptions.method || 'GET').toUpperCase();
   let response;
@@ -147,6 +190,15 @@ const proctoringRequest = async (path, options = {}) => {
       // Noto'g'ri JSON qaytsa ham HTTP statusni yo'qotmaymiz; raw text xato
       // formatteriga tushadi.
     }
+  }
+
+  // Access token muddati tugagan — bir marta refresh qilib qayta urinamiz.
+  if (response.status === 401 && requireAuth && !refreshed) {
+    try {
+      if (storeProctorAccessToken(await refreshAuthToken())) {
+        return proctoringRequest(path, { ...options, _retried: true });
+      }
+    } catch { /* refresh ishlamadi — pastda 401 xatosi */ }
   }
 
   if (!response.ok) {
@@ -231,6 +283,7 @@ const refreshAuthToken = () => {
     refreshInFlight = axiosInstance
       // body yo'q; refresh token localStorage'dan emas, cookie'dan boradi
       .post('/users/token/refresh', null, { skipAuth: true, skipErrorToast: true, _retried: true })
+      .then((data) => { storeProctorAccessToken(data); return data; })
       .finally(() => { refreshInFlight = null; });
   }
   return refreshInFlight;
@@ -379,16 +432,21 @@ class ApiService {
   async login(email, password) {
     // Backend JWT'ni httpOnly cookie sifatida o'rnatadi (withCredentials orqali).
     // skipErrorToast: AuthPage o'zi xatoni ko'rsatadi — global toast ikki marta bo'lmasin.
-    return axiosInstance.post(
+    const data = await axiosInstance.post(
       '/users/login',
       { email, password },
       { skipAuth: true, skipErrorToast: true }
     );
+    // Proctor monitor so'rovlari uchun Bearer token.
+    storeProctorAccessToken(data);
+    return data;
   }
 
   // Access token muddati tugaganda cookie'ni yangilaydi — body'siz, cookie avtomatik.
   async refreshToken() {
-    return axiosInstance.post('/users/token/refresh', null, { skipAuth: true });
+    const data = await axiosInstance.post('/users/token/refresh', null, { skipAuth: true });
+    storeProctorAccessToken(data);
+    return data;
   }
 
   // silent: kirmagan foydalanuvchida 401 normal holat (masalan ProctorGate
