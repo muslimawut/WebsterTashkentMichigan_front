@@ -107,7 +107,7 @@ const PreparationSection = () => {
                 <div className="flex flex-col items-center w-full">
                   {/* Icon */}
                   <div className="mb-3 sm:mb-6 flex justify-center text-center transition-transform duration-200 ease-in-out group-hover:scale-110">
-                    <img src={material.icon} alt="" className="w-12 h-12 sm:w-20 sm:h-20 object-contain" />
+                    <img src={material.icon} alt={`${material.title} icon`} className="w-12 h-12 sm:w-20 sm:h-20 object-contain" />
                   </div>
 
                   {/* Title */}
@@ -147,7 +147,7 @@ const PreparationSection = () => {
             {/* Modal Header */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 sm:p-6 border-b border-gray-200 bg-white gap-4 shrink-0">
               <div className="flex items-center gap-3 sm:gap-4 w-full sm:w-auto">
-                <img src={selectedPDF?.icon} alt="" className="w-10 h-10 sm:w-16 sm:h-16 object-contain" />
+                <img src={selectedPDF?.icon} alt={selectedPDF ? `${selectedPDF.title} icon` : ''} className="w-10 h-10 sm:w-16 sm:h-16 object-contain" />
                 <div className="flex-1">
                   <h3 className="text-lg sm:text-2xl font-bold text-gray-900 leading-tight">{selectedPDF?.title}</h3>
                   <p className="text-gray-600 text-xs sm:text-sm line-clamp-1">{selectedPDF?.description}</p>

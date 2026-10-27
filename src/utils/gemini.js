@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { knowledgeBase } from "./chatKnowledgeBase";
+import { SUPPORT_EMAIL } from "../config/site";
 
 const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 const MODEL_NAME = "gemini-2.5-flash";
@@ -32,7 +33,7 @@ GENERAL INFORMATION
 REGISTRATION & PAYMENT
 - To register: complete your online application and upload all required documents first. Only submitted-application holders can register.
 - Exam fee: 650,000 UZS.
-- Payment methods: Click, Payme, Xazna (online), or any bank.
+- Payment methods: Click, Payme (online), or any bank.
 - Payment deadline: within 2 days after registration AND at least 6 business days before the exam date. Late payment = registration cancelled.
 - Capacity: only 40 applicants per test day. First-come, first-served.
 - After payment confirmed: Invitation Letter sent by email within 2 business days. Attendance allowed ONLY after receiving this letter.
@@ -65,7 +66,7 @@ TECHNICAL & CONDUCT RULES
 - Disqualification (immediate, no warning): cheating, unauthorized materials, phone use, any suspicious behavior.
 
 CONTACT & SUPPORT
-- Contact the admissions or testing office via official email on the MEPT website: skuzimurod@webster.edu
+- Contact the admissions or testing office via official email on the MEPT website: ${SUPPORT_EMAIL}
 `;
 
 const SYSTEM_INSTRUCTION = `
@@ -89,7 +90,7 @@ INSTRUCTIONS:
    - Uzbek: "Men faqat MEPT imtihoni va Webster Test Markazi haqidagi savollarga javob bera olaman."
    - Russian: "Я могу отвечать только на вопросы о экзамене MEPT и Тест-центре Вебстера."
 7. Keep answers concise (2-3 sentences unless more detail is requested).
-8. For payment questions, always mention the fee (650,000 UZS) and payment methods (Click, Payme, Xazna, bank).
+8. For payment questions, always mention the fee (650,000 UZS) and payment methods (Click, Payme, bank).
 9. For exam structure questions, clearly distinguish Part 1 (Listening + GVR) and Part 2 (Writing).
 10. For passing score questions, specify both Undergraduate (53/80 + B1) and Graduate (58/80 + B2) thresholds.
 

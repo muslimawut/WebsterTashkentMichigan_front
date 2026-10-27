@@ -1,3 +1,5 @@
+import { SUPPORT_EMAIL } from '../config/site';
+
 export const knowledgeBase = [
     {
         intent: 'greeting',
@@ -72,9 +74,9 @@ export const knowledgeBase = [
             ru: ['цена', 'стоимость', 'плата', 'сколько стоит', 'оплата', 'стоимость экзамена']
         },
         response: {
-            en: "The MEPT exam fee is 650,000 UZS. Payment can be made online via Click, Payme, Xazna, or at any bank.",
-            uz: "MEPT imtihon to'lovi 650 000 so'm. To'lov Click, Payme, Xazna orqali onlayn yoki istalgan bankda amalga oshirilishi mumkin.",
-            ru: "Стоимость экзамена MEPT составляет 650 000 сум. Оплата может производиться онлайн через Click, Payme, Xazna или в любом банке."
+            en: "The MEPT exam fee is 650,000 UZS. Payment can be made online via Click, Payme, or at any bank.",
+            uz: "MEPT imtihon to'lovi 650 000 so'm. To'lov Click, Payme orqali onlayn yoki istalgan bankda amalga oshirilishi mumkin.",
+            ru: "Стоимость экзамена MEPT составляет 650 000 сум. Оплата может производиться онлайн через Click, Payme или в любом банке."
         }
     },
     {
@@ -85,9 +87,9 @@ export const knowledgeBase = [
             ru: ['способ оплаты', 'как оплатить', 'через click', 'через payme', 'через xazna', 'банк', 'онлайн оплата']
         },
         response: {
-            en: "Payment can be made online via Click, Payme, Xazna, or at any bank. Detailed payment instructions are available on the website.",
-            uz: "To'lov Click, Payme, Xazna orqali onlayn yoki istalgan bankda amalga oshirilishi mumkin. Batafsil to'lov ko'rsatmalari veb-saytda mavjud.",
-            ru: "Оплата может производиться онлайн через Click, Payme, Xazna или в любом банке. Подробные инструкции по оплате доступны на сайте."
+            en: "Payment can be made online via Click, Payme, or at any bank. Detailed payment instructions are available on the website.",
+            uz: "To'lov Click, Payme orqali onlayn yoki istalgan bankda amalga oshirilishi mumkin. Batafsil to'lov ko'rsatmalari veb-saytda mavjud.",
+            ru: "Оплата может производиться онлайн через Click, Payme или в любом банке. Подробные инструкции по оплате доступны на сайте."
         }
     },
     {
@@ -358,9 +360,9 @@ export const knowledgeBase = [
             ru: ['контакт', 'почта', 'телефон', 'поддержка', 'помощь', 'связаться', 'приёмная комиссия']
         },
         response: {
-            en: "For questions about the MEPT, please contact the admissions or testing office via the official email provided on the MEPT website. You can also reach out via email at skuzimurod@webster.edu.",
-            uz: "MEPT bo'yicha savollar uchun MEPT veb-saytida ko'rsatilgan rasmiy elektron pochta orqali qabul yoki test bo'limi bilan bog'laning. Shuningdek, skuzimurod@webster.edu elektron pochtasi orqali murojaat qilishingiz mumkin.",
-            ru: "По вопросам о MEPT свяжитесь с приёмной комиссией или отделом тестирования по официальной электронной почте, указанной на сайте MEPT. Также можно написать на skuzimurod@webster.edu."
+            en: `For questions about the MEPT, please contact the admissions or testing office via the official email provided on the MEPT website. You can also reach out via email at ${SUPPORT_EMAIL}.`,
+            uz: `MEPT bo'yicha savollar uchun MEPT veb-saytida ko'rsatilgan rasmiy elektron pochta orqali qabul yoki test bo'limi bilan bog'laning. Shuningdek, ${SUPPORT_EMAIL} elektron pochtasi orqali murojaat qilishingiz mumkin.`,
+            ru: `По вопросам о MEPT свяжитесь с приёмной комиссией или отделом тестирования по официальной электронной почте, указанной на сайте MEPT. Также можно написать на ${SUPPORT_EMAIL}.`
         }
     }
 ];

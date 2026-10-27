@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import logo from '../../logowhitewebster.png';
-import { Home, Calendar, Info, User, PenTool } from 'lucide-react';
+import { Home, Calendar, Info, User, FileText } from 'lucide-react';
 import onlineexam from '../../online-exam.png';
+import { SHOW_MOCK_EXAM } from '../config/site';
 const Navbar = ({ onSignUpClick, isLoggedIn }) => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -57,12 +58,14 @@ const Navbar = ({ onSignUpClick, isLoggedIn }) => {
               >
                 Test Dates
               </Link>
-              <Link
-                to="/mock-exam"
-                className="text-white hover:text-[#f5b706] transition-colors duration-300 text-sm font-medium"
-              >
-                Mock Exam
-              </Link>
+              {SHOW_MOCK_EXAM && (
+                <Link
+                  to="/mock-exam"
+                  className="text-white hover:text-[#f5b706] transition-colors duration-300 text-sm font-medium"
+                >
+                  Mock Exam
+                </Link>
+              )}
             </div>
 
             {/* Center Logo */}
@@ -113,10 +116,10 @@ const Navbar = ({ onSignUpClick, isLoggedIn }) => {
             <span className="text-[10px] mt-1 font-medium">Home</span>
           </Link>
 
-          {/* Mock Exam */}
-          <Link to="/mock-exam" className={`flex flex-col items-center justify-center w-14 pb-1 transition-colors ${isActive('/mock-exam') ? 'text-white' : 'hover:text-gray-200'}`}>
-            <img src={onlineexam} className="w-[22px] h-[22px]" alt="Exam" />
-            <span className="text-[10px] mt-1 font-medium">Mock Exam</span>
+          {/* About */}
+          <Link to="/about" className={`flex flex-col items-center justify-center w-14 pb-1 transition-colors ${isActive('/about') ? 'text-white' : 'hover:text-gray-200'}`}>
+            <Info size={22} className={isActive('/about') ? 'text-blue-500' : ''} />
+            <span className="text-[10px] mt-1 font-medium">About</span>
           </Link>
 
           {/* Center Action Button (Floating) - Dates */}
@@ -130,11 +133,18 @@ const Navbar = ({ onSignUpClick, isLoggedIn }) => {
             <span className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-[10px] font-medium text-white w-max">Test Dates</span>
           </div>
 
-          {/* About */}
-          <Link to="/about" className={`flex flex-col items-center justify-center w-14 pb-1 transition-colors ${isActive('/about') ? 'text-white' : 'hover:text-gray-200'}`}>
-            <Info size={22} className={isActive('/about') ? 'text-blue-500' : ''} />
-            <span className="text-[10px] mt-1 font-medium">About</span>
-          </Link>
+          {/* Mock Exam — ishga tushguncha o'rnida Contract turadi */}
+          {SHOW_MOCK_EXAM ? (
+            <Link to="/mock-exam" className={`flex flex-col items-center justify-center w-14 pb-1 transition-colors ${isActive('/mock-exam') ? 'text-white' : 'hover:text-gray-200'}`}>
+              <img src={onlineexam} className="w-[22px] h-[22px]" alt="Mock exam" />
+              <span className="text-[10px] mt-1 font-medium">Mock Exam</span>
+            </Link>
+          ) : (
+            <Link to="/contract" className={`flex flex-col items-center justify-center w-14 pb-1 transition-colors ${isActive('/contract') ? 'text-white' : 'hover:text-gray-200'}`}>
+              <FileText size={22} className={isActive('/contract') ? 'text-blue-500' : ''} />
+              <span className="text-[10px] mt-1 font-medium">Contract</span>
+            </Link>
+          )}
 
           {/* Profile */}
           {isLoggedIn ? (

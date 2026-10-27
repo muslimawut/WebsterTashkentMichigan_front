@@ -4,14 +4,16 @@ import webster from "../../webster.jpg";
 
 const HeroSection = () => {
   const navigate = useNavigate();
+  // Mobil: ko'rinadigan ekran (svh) bo'yicha, tepada logo, pastda tab bar uchun joy qoldiramiz —
+  // sarlavha va "Apply Here" birinchi ekranda ko'rinib turadi
   return (
-    <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
+    <section className="relative min-h-svh sm:min-h-screen pt-28 pb-32 sm:py-0 flex items-center justify-center overflow-hidden">
       {/* Background Image with Overlay */}
       <div className="absolute inset-0 z-0">
         {/* Background Image */}
         <img
           src={webster}
-          alt="Webster University"
+          alt="Webster University in Tashkent campus building"
           className="absolute inset-0 w-full h-full object-cover"
         />
         {/* Dark overlay */}
@@ -22,7 +24,7 @@ const HeroSection = () => {
       <div className="relative z-30 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
         {/* Main Heading with Animation */}
         <h1
-          className="text-3xl sm:text-4xl lg:text-5xl xl:text-6xl font-bold text-white mb-8 leading-tight opacity-0 tracking-tight"
+          className="text-3xl sm:text-4xl lg:text-5xl xl:text-6xl font-bold text-white mb-4 sm:mb-8 leading-tight opacity-0 tracking-tight"
           style={{
             animation: 'fadeInUp 0.8s ease-out 0.2s forwards',
             lineHeight: '1.2'
@@ -33,13 +35,13 @@ const HeroSection = () => {
 
         {/* Description with Animation */}
         <p
-          className="text-lg sm:text-xl text-gray-200 mb-8 max-w-3xl mx-auto leading-relaxed opacity-0"
+          className="text-base sm:text-xl text-gray-200 mb-6 sm:mb-8 max-w-3xl mx-auto leading-relaxed opacity-0 [@media(max-width:639px)_and_(max-height:700px)]:hidden"
           style={{
             animation: 'fadeInUp 0.8s ease-out 0.4s forwards'
           }}
         >
           Official registration and payment platform for the Michigan English Placement Test (MEPT) at Webster University Tashkent.
-          Register, pay, and check your results — all in one place.
+          <span className="hidden sm:inline"> Register, pay, and check your results — all in one place.</span>
         </p>
 
         {/* CTA Buttons with Animation */}
@@ -71,7 +73,7 @@ const HeroSection = () => {
 
         {/* Bottom Indicator with Animation */}
         <div
-          className="absolute bottom-[-80px] left-1/2 transform -translate-x-1/2 opacity-0"
+          className="hidden sm:block absolute bottom-[-80px] left-1/2 transform -translate-x-1/2 opacity-0"
           style={{
             animation: 'fadeIn 1s ease-out 0.8s forwards'
           }}

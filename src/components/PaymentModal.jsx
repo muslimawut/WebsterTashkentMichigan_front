@@ -5,7 +5,7 @@ import api from '../api/api';
 import { sanitizeUrl } from '../utils/sanitize';
 import clicklogo from '../../clicklogo.png';
 import paymelogo from '../../payme.svg';
-import xaznalogo from '../../xazna.png';
+import { EXAM_FEE_UZS, EXAM_FEE_LABEL } from '../config/site';
 
 const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
   const navigate = useNavigate();
@@ -45,7 +45,7 @@ const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
 
       // Promocode kiritilgan bo'lsa — promocode yo'lidan ketamiz (Payme kerak emas)
       if (hasPromocode) {
-        const response = await api.createOrder('promocode', 650000, selectedDate.id, promocode);
+        const response = await api.createOrder('promocode', EXAM_FEE_UZS, selectedDate.id, promocode);
 
         // waived: true — to'lov bekor qilindi, booking tasdiqlandi
         if (response.waived) {
@@ -59,7 +59,7 @@ const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
       }
 
       // Oddiy oqim: Payme va h.k. — payment_url ga yo'naltiramiz
-      const response = await api.createOrder(paymentMethod, 650000, selectedDate.id);
+      const response = await api.createOrder(paymentMethod, EXAM_FEE_UZS, selectedDate.id);
 
       const safeUrl = sanitizeUrl(response.payment_url);
       if (safeUrl) {
@@ -117,13 +117,6 @@ const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
       name: 'Click',
       icon: clicklogo,
       description: 'Pay with Click'
-      
-    },
-    {
-      name: 'Xazna',
-      icon: xaznalogo,
-      description: 'Pay with Xazna',
-      disabled: true
     }
   ];
 
@@ -216,7 +209,7 @@ const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
               </div>
               <div className="text-right shrink-0">
                 <p className="text-xs sm:text-sm text-gray-400">Amount</p>
-                <p className="font-bold text-white text-sm sm:text-base">650,000 UZS</p>
+                <p className="font-bold text-white text-sm sm:text-base">{EXAM_FEE_LABEL}</p>
               </div>
             </div>
 
@@ -231,25 +224,10 @@ const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
             </div>
           </div>
 
-          {/* Payment warning — faqat Payme qabul qilinadi */}
-          <div className="mb-6 rounded-2xl p-4 bg-red-500/10 border-2 border-red-500/40 flex items-start gap-3">
-            <svg className="w-5 h-5 text-red-400 shrink-0 mt-0.5 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-            </svg>
-            <p className="text-sm text-gray-200 leading-relaxed">
-              Payments are accepted via{' '}
-              <img src={paymelogo} alt="Payme" className="inline-block h-5 w-auto align-middle" />{' '}
-              and{' '}
-              <img src={clicklogo} alt="Click" className="inline-block h-5 w-auto align-middle" />.{' '}
-              <img src={xaznalogo} alt="Xazna" className="inline-block h-5 w-auto align-middle rounded bg-white/80 px-1.5 py-0.5 opacity-50 grayscale" />{' '}
-              <span className="text-yellow-300">no longer available.</span>
-            </p>
-          </div>
-
           {/* Payment Methods */}
           <div className="mb-6">
             <p className="text-sm font-medium text-gray-300 mb-4">Select payment method</p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               {paymentOptions.map((option) => (
                 <button
                   key={option.name}

@@ -1,8 +1,7 @@
 import React from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { CreditCard } from 'lucide-react';
 import paymelogo from '../../payme.svg';
 import clicklogo from '../../clicklogo.png';
-import xaznalogo from '../../xazna.png';
 
 const AnnouncementBar = () => {
   // Matnni bir necha marta takrorlaymiz — uzluksiz (seamless) aylanish uchun
@@ -10,14 +9,11 @@ const AnnouncementBar = () => {
 
   const Message = () => (
     <span className="mx-8 inline-flex shrink-0 items-center gap-2 text-sm font-semibold tracking-wide whitespace-nowrap">
-      <AlertTriangle size={16} className="text-[#f5b706] shrink-0" />
-      <span className="text-white">Payments are accepted via</span>
+      <CreditCard size={16} className="text-[#f5b706] shrink-0" />
+      <span className="text-white">Payment:</span>
       <img src={paymelogo} alt="Payme" className="h-5 w-auto" />
       <span className="text-white">and</span>
       <img src={clicklogo} alt="Click" className="h-5 w-auto" />
-      <span className="text-white">—</span>
-      <img src={xaznalogo} alt="Xazna" className="h-5 w-auto rounded bg-white/80 px-1.5 py-0.5 opacity-50 grayscale" />
-      <span className="text-white/80">no longer available.</span>
     </span>
   );
 

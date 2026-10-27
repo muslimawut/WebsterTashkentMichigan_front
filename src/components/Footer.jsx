@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import logo from '../../logowhitewebster.png';
+import { SUPPORT_EMAIL, SHOW_MOCK_EXAM } from '../config/site';
 const Footer = () => {
   const navigate = useNavigate();
   const scrollToSection = (sectionId) => {
@@ -52,14 +53,16 @@ const Footer = () => {
                   Test Dates
                 </Link>
               </li>
-              <li>
-                <Link
-                  to="/mock-exam"
-                  className="text-gray-400 hover:text-white transition-colors hover:translate-x-1 inline-block"
-                >
-                  Mock Exam
-                </Link>
-              </li>
+              {SHOW_MOCK_EXAM && (
+                <li>
+                  <Link
+                    to="/mock-exam"
+                    className="text-gray-400 hover:text-white transition-colors hover:translate-x-1 inline-block"
+                  >
+                    Mock Exam
+                  </Link>
+                </li>
+              )}
               <li>
                 <button
                   onClick={() => {
@@ -83,8 +86,8 @@ const Footer = () => {
             <ul className="space-y-4 text-sm">
               <li className="flex flex-col items-center md:items-start gap-1">
                 <span className="text-gray-500 font-medium">Email Support</span>
-                <a href="mailto:skuzimurodov@webster.edu" className="text-white hover:text-[#f5b706] transition-colors font-medium">
-                  skuzimurodov@webster.edu
+                <a href={`mailto:${SUPPORT_EMAIL}`} className="text-white hover:text-[#f5b706] transition-colors font-medium">
+                  {SUPPORT_EMAIL}
                 </a>
               </li>
               <li className="flex flex-col items-center md:items-start gap-1">

@@ -1831,7 +1831,7 @@ const ProctoringExam = () => {
             <span>Back</span>
           </button>
           <div className="px-brand">
-            <img className="px-brand-logo" src={websterLogo} alt="Webster" />
+            <img className="px-brand-logo" src={websterLogo} alt="Webster University logo" />
             <div className="px-brand-text">
               <span className="px-brand-name">Webster · MEPT</span>
               <span className="px-brand-sub">Exam rules and monitoring consent</span>
@@ -2008,7 +2008,7 @@ const ProctoringExam = () => {
         </button>
 
         <div className="px-brand">
-          <img className="px-brand-logo" src={websterLogo} alt="Webster" />
+          <img className="px-brand-logo" src={websterLogo} alt="Webster University logo" />
           <div className="px-brand-text">
             <span className="px-brand-name">Webster · MEPT</span>
             <span className="px-brand-sub">Cambridge Metrica · Proctoring</span>
@@ -2549,7 +2549,7 @@ const IntroVideoStep = ({ alreadyWatched, onBack, onContinue }) => {
           <span>Back</span>
         </button>
         <div className="px-brand">
-          <img className="px-brand-logo" src={websterLogo} alt="Webster" />
+          <img className="px-brand-logo" src={websterLogo} alt="Webster University logo" />
           <div className="px-brand-text">
             <span className="px-brand-name">Webster · MEPT</span>
             <span className="px-brand-sub">Instruction video</span>

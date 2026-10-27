@@ -151,7 +151,7 @@ const AboutPage = () => {
               </svg>
               <span className="font-medium">Back to Home</span>
             </button>
-            <h1 className="text-xl font-bold text-white">About MET</h1>
+            <h1 className="text-xl font-bold text-white">About MEPT</h1>
             <div className="w-24"></div>
           </div>
         </div>
@@ -475,7 +475,7 @@ const AboutPage = () => {
         >
           <h2 className="text-3xl font-bold text-white mb-4">Ready to Take the Test?</h2>
           <p className="text-gray-300 mb-6 max-w-2xl mx-auto">
-            Register for the Michigan English Test at Webster University and take the first step towards your academic goals.
+            Register for the Michigan English Placement Test (MEPT) at Webster University and take the first step towards your academic goals.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <button
