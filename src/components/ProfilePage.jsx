@@ -19,7 +19,8 @@ import {
   Key,
   LogOut,
   Award,
-  TrendingUp
+  TrendingUp,
+  RotateCcw
 } from 'lucide-react';
 import ApiService from '../api/api';
 import { toast, ToastContainer } from 'react-toastify';
@@ -41,6 +42,49 @@ const formatBookingDateTime = (dateStr, timeStr) => {
   const hour12 = hour % 12 || 12;
   return `${datePart} at ${hour12}:${min} ${ampm}`;
 };
+
+// Har bir booking'ning refund_status'i (refund order'ga bog'langan, profilga emas):
+// none | initiated | approved | processed. "none" bo'lsa hech narsa ko'rsatilmaydi.
+// Refund ko'rsatmalari arizachiga backend tomonidan emailda yuboriladi.
+const REFUND_STATUSES = {
+  initiated: {
+    label: 'Refund in Progress',
+    note: 'Refund instructions have been sent to your email.',
+    badge: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+    box: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/30',
+  },
+  approved: {
+    label: 'Refund Approved',
+    note: 'Your refund has been approved and is being processed.',
+    badge: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+    box: 'text-blue-400 bg-blue-500/10 border-blue-500/30',
+  },
+  processed: {
+    label: 'Refunded',
+    note: 'Your refund has been processed.',
+    badge: 'bg-green-500/20 text-green-400 border-green-500/30',
+    box: 'text-green-400 bg-green-500/10 border-green-500/30',
+  },
+};
+
+const getRefund = (status) => REFUND_STATUSES[status] || null;
+
+const RefundBadge = ({ refund }) => (
+  <span className={`px-3 py-1 rounded-full text-xs font-semibold border flex items-center gap-1.5 ${refund.badge}`}>
+    <RotateCcw className="w-3.5 h-3.5" />
+    {refund.label}
+  </span>
+);
+
+const RefundNotice = ({ refund }) => (
+  <div className={`flex items-start gap-3 p-4 rounded-xl border ${refund.box}`}>
+    <RotateCcw className="w-6 h-6 flex-shrink-0 mt-0.5" />
+    <div>
+      <p className="font-semibold mb-1">{refund.label}</p>
+      <p className="text-sm text-gray-300">{refund.note}</p>
+    </div>
+  </div>
+);
 
 const ProfilePage = () => {
   const navigate = useNavigate();
@@ -472,13 +516,15 @@ const ProfilePage = () => {
           const visibleBookings = (userData.bookings || []).filter(b => {
             const hasResult = b.total_score !== null || b.listening_score !== null;
             const isFuture = new Date(b.test_date) >= today;
-            return hasResult || isFuture;
+            // Refund jarayonidagi booking sanasi o'tgan bo'lsa ham ko'rinib tursin.
+            return hasResult || isFuture || Boolean(getRefund(b.refund_status));
           });
 
           return (
             <div className="space-y-5">
               {visibleBookings.map((booking, index) => {
                 const hasResult = booking.total_score !== null || booking.listening_score !== null;
+                const refund = getRefund(booking.refund_status);
 
                 /* ── Completed card ── */
                 if (hasResult) return (
@@ -500,6 +546,7 @@ const ProfilePage = () => {
                               {booking.decision}
                             </span>
                           )}
+                          {refund && <RefundBadge refund={refund} />}
                         </div>
                         <p className="text-gray-400 flex items-center gap-2 text-sm">
                           <Calendar className="w-4 h-4" />
@@ -517,6 +564,12 @@ const ProfilePage = () => {
                         </div>
                       </div>
                     </div>
+
+                    {refund && (
+                      <div className="mb-6">
+                        <RefundNotice refund={refund} />
+                      </div>
+                    )}
 
                     <div className="border-t border-gray-700 pt-6 mt-2">
                       <h5 className="text-base font-bold text-gray-200 mb-4 flex items-center gap-2">
@@ -541,7 +594,7 @@ const ProfilePage = () => {
                   </div>
                 );
 
-                /* ── Upcoming card ── */
+                /* ── Upcoming card (refund bo'lsa — refund holati bilan) ── */
                 return (
                   <div
                     key={booking.id}
@@ -552,10 +605,12 @@ const ProfilePage = () => {
                       <div className="flex-1">
                         <div className="flex flex-wrap items-center gap-3 mb-3">
                           <h4 className="text-xl font-bold text-white">Michigan Placement Test</h4>
-                          <span className="px-4 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">
-                            <Calendar className="w-3.5 h-3.5" />
-                            Upcoming
-                          </span>
+                          {refund ? <RefundBadge refund={refund} /> : (
+                            <span className="px-4 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">
+                              <Calendar className="w-3.5 h-3.5" />
+                              Upcoming
+                            </span>
+                          )}
                         </div>
                         <p className="text-gray-400 flex items-center gap-2 text-sm">
                           <Calendar className="w-4 h-4" />
@@ -566,13 +621,15 @@ const ProfilePage = () => {
                     </div>
 
                     <div className="border-t border-gray-700 pt-6 mt-2">
-                      <div className="flex items-start gap-3 text-yellow-400 bg-yellow-500/10 p-4 rounded-xl border border-yellow-500/30">
-                        <AlertCircle className="w-6 h-6 flex-shrink-0 mt-0.5" />
-                        <div>
-                          <p className="font-semibold mb-1">Test Reminder</p>
-                          <p className="text-sm text-yellow-300/80">Please arrive 15 minutes early. Bring your passport and registration confirmation.</p>
+                      {refund ? <RefundNotice refund={refund} /> : (
+                        <div className="flex items-start gap-3 text-yellow-400 bg-yellow-500/10 p-4 rounded-xl border border-yellow-500/30">
+                          <AlertCircle className="w-6 h-6 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <p className="font-semibold mb-1">Test Reminder</p>
+                            <p className="text-sm text-yellow-300/80">Please arrive 15 minutes early. Bring your passport and registration confirmation.</p>
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                   </div>
                 );

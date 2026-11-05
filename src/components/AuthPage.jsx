@@ -20,17 +20,13 @@ const Spinner = () => (
   </svg>
 );
 
-// Backend ro'yxatdan o'tishda ikkala holatda ham bir xil javob qaytaradi
-// ("If the registration details are eligible, an activation email has been sent."),
-// shuning uchun hisob yangi yoki allaqachon bor ekanini javobdan bilib bo'lmaydi.
-// Kod kiritish uchun 5 daqiqa beramiz — kirmasa, hisob bor deb Sign In'ga qaytaramiz.
-const ACTIVATION_WINDOW_MS = 5 * 60 * 1000;
-
-const formatCountdown = (totalSeconds) => {
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${String(seconds).padStart(2, '0')}`;
-};
+// Faqat sayt ichidagi yo'lga yo'naltiramiz — "//evil.com", "https://..." yoki
+// "javascript:" kabi qiymatlar window.location.href'ga tushmasin.
+const getSafeRedirect = (value) => (
+  value && value.startsWith('/') && !value.startsWith('//') && !value.startsWith('/\\')
+    ? value
+    : null
+);
 
 const AuthPage = () => {
   const navigate = useNavigate();
@@ -38,7 +34,10 @@ const AuthPage = () => {
   const [activeTab, setActiveTab] = useState(
     searchParams.get('tab') === 'signup' ? 'signup' : 'signin'
   );
-  const redirectPath = searchParams.get('redirect') || '/';
+  const requestedRedirect = getSafeRedirect(searchParams.get('redirect'));
+  const redirectPath = requestedRedirect || '/';
+  // Yangi ro'yxatdan o'tgan arizachi uchun "dashboard" — profil sahifasi.
+  const signUpRedirectPath = requestedRedirect || '/profile';
   const [signUpStep, setSignUpStep] = useState(1);
   const [selectedDegree, setSelectedDegree] = useState('');
   const [showForgotPassword, setShowForgotPassword] = useState(false);
@@ -63,9 +62,8 @@ const AuthPage = () => {
   const [passwordErrors, setPasswordErrors] = useState([]);
   const [passportError, setPassportError] = useState('');
   const [loading, setLoading] = useState(false);
-  // Tasdiqlash kodi uchun qolgan vaqt (timestamp + har soniyada yangilanadigan hisob)
-  const [activationDeadline, setActivationDeadline] = useState(null);
-  const [secondsLeft, setSecondsLeft] = useState(0);
+  // Backend register'da 409 qaytardi — bu email bilan akkaunt allaqachon bor.
+  const [accountExists, setAccountExists] = useState(false);
 
   // Scroll to top when page opens
   React.useEffect(() => {
@@ -87,9 +85,6 @@ const AuthPage = () => {
           lastName: pending.lastName || '',
           phone: pending.phone || '',
         }));
-        // Muddat sahifa yangilanganda ham davom etadi; allaqachon o'tgan bo'lsa
-        // quyidagi countdown effekti darhol Sign In'ga qaytaradi.
-        setActivationDeadline(pending.expiresAt || Date.now() + ACTIVATION_WINDOW_MS);
       }
     } catch {
       // noto'g'ri JSON bo'lsa e'tiborsiz qoldiramiz
@@ -130,48 +125,22 @@ const AuthPage = () => {
     }
   };
 
-  // 5 daqiqa ichida kod kiritilmadi — demak bu email bilan hisob allaqachon mavjud
-  // (backend yangi foydalanuvchiga kod yuboradi, mavjudiga esa yubormaydi).
-  const expireActivation = React.useCallback(() => {
+  // Sign In tab'iga o'tkazadi va sign up'da kiritilgan emailni oldindan to'ldiradi.
+  const openSignInWithEmail = () => {
     localStorage.removeItem('pendingActivation');
-    setActivationDeadline(null);
-    setSecondsLeft(0);
+    setAccountExists(false);
     setRegistrationComplete(false);
     setSignUpStep(1);
     setSelectedDegree('');
     setActiveTab('signin');
-    // Kiritilgan emailni Sign In formasiga oldindan to'ldiramiz
     setFormData((prev) => ({
       ...prev,
       signInEmail: prev.email,
       signInPassword: '',
       verificationCode: '',
     }));
-    showNotification(
-      'You already have an account with these details. Please sign in instead.',
-      'info'
-    );
     window.scrollTo({ top: 0, behavior: 'smooth' });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Qolgan vaqtni har soniyada yangilab turadi
-  React.useEffect(() => {
-    if (!activationDeadline) return;
-
-    const tick = () => {
-      const remaining = activationDeadline - Date.now();
-      if (remaining <= 0) {
-        expireActivation();
-        return;
-      }
-      setSecondsLeft(Math.ceil(remaining / 1000));
-    };
-
-    tick();
-    const intervalId = setInterval(tick, 1000);
-    return () => clearInterval(intervalId);
-  }, [activationDeadline, expireActivation]);
+  };
 
 
   // Kirill / rus harflarini olib tashlaydi (faqat lotin matn qoladi)
@@ -203,6 +172,11 @@ const AuthPage = () => {
     // Passport validation
     if (name === 'passportCode') {
       validatePassport(cleanValue);
+    }
+
+    // Email o'zgardi — "akkaunt mavjud" xabari endi unga tegishli emas.
+    if (name === 'email') {
+      setAccountExists(false);
     }
   };
 
@@ -311,6 +285,7 @@ const AuthPage = () => {
     }
 
     setLoading(true);
+    setAccountExists(false);
     try {
       const userData = {
         firstName: formData.firstName,
@@ -322,45 +297,27 @@ const AuthPage = () => {
         password: formData.password
       };
 
-      // Register the user
-      const response = await ApiService.register(userData);
+      // 201 — akkaunt yaratildi va aktivatsiya kodi emailga yuborildi.
+      // (Interceptor faqat 2xx'da resolve qiladi; body bo'sh bo'lishi ham mumkin.)
+      await ApiService.register(userData);
 
-      // If registration is successful (200), show verification code input
-      if (response) {
-        // Refresh'da yo'qolmasligi uchun "tasdiqlash kutilmoqda" holatini saqlaymiz
-        const expiresAt = Date.now() + ACTIVATION_WINDOW_MS;
-        localStorage.setItem('pendingActivation', JSON.stringify({
-          email: formData.email,
-          firstName: formData.firstName,
-          lastName: formData.lastName,
-          phone: formData.phone,
-          degree: selectedDegree,
-          expiresAt,
-        }));
-        setRegistrationComplete(true);
-        setActivationDeadline(expiresAt);
-        showNotification('Registration successful! A verification code has been sent to your email.', 'success');
-        // Scroll to top smoothly
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      }
+      // Refresh'da yo'qolmasligi uchun "tasdiqlash kutilmoqda" holatini saqlaymiz
+      localStorage.setItem('pendingActivation', JSON.stringify({
+        email: formData.email,
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        phone: formData.phone,
+        degree: selectedDegree,
+      }));
+      setRegistrationComplete(true);
+      showNotification('Registration successful! A verification code has been sent to your email.', 'success');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error) {
       console.error('Registration error:', error);
 
-      // "already exists" — bu odam allaqachon ro'yxatdan o'tgan.
-      // Xato ko'rsatib qo'ya qolmay, uni Sign In tab'iga yo'naltiramiz.
-      const alreadyExists = /already exists/i.test(error.message || '');
-      if (alreadyExists) {
-        showNotification(
-          'You already have an account with these details. Please sign in instead.',
-          'info'
-        );
-        setActiveTab('signin');
-        setSignUpStep(1);
-        setRegistrationComplete(false);
-        setSelectedDegree('');
-        localStorage.removeItem('pendingActivation');
-        // Kiritilgan emailni Sign In formasiga oldindan to'ldiramiz
-        setFormData((prev) => ({ ...prev, signInEmail: prev.email, signInPassword: '' }));
+      // 409 — bu email bilan akkaunt allaqachon bor: formada Log In tugmasini ko'rsatamiz.
+      if (error.response?.status === 409) {
+        setAccountExists(true);
       } else {
         // api.js already formatted the error message
         showNotification(error.message, 'error');
@@ -382,23 +339,23 @@ const AuthPage = () => {
 
     setLoading(true);
     try {
+      // Backend shu javobda user ma'lumotini qaytaradi va auth cookie'larini
+      // o'rnatadi — arizachi qayta login qilmasdan dashboard'ga o'tadi.
       const response = await ApiService.verifyActivationCode(formData.email, formData.verificationCode);
 
-      // JWT httpOnly cookie'da (backend o'rnatadi) — frontend tokenni SAQLAMAYDI.
-      // Access/refresh token localStorage'ga yozilmaydi; auth cookie orqali boradi.
-      localStorage.setItem('userLoggedIn', 'true');
-      localStorage.setItem('userEmail', formData.email);
-      localStorage.removeItem('currentPage'); // Clear current page
-
-      // Tasdiqlash tugadi — pending holatni va taymerni o'chiramiz
+      // Tasdiqlash tugadi — pending holatni o'chiramiz
       localStorage.removeItem('pendingActivation');
-      setActivationDeadline(null);
+
+      // JWT httpOnly cookie'da — frontend tokenni SAQLAMAYDI, faqat login holatini belgilaydi.
+      localStorage.setItem('userLoggedIn', 'true');
+      localStorage.setItem('userEmail', response?.user?.email || formData.email);
+      localStorage.removeItem('currentPage'); // Clear current page
 
       showNotification('Account activated successfully! Redirecting...', 'success');
 
       setTimeout(() => {
         // Bitta to'liq navigatsiya (navigate + reload resume'ni buzardi)
-        window.location.href = redirectPath;
+        window.location.href = signUpRedirectPath;
       }, 1500);
     } catch (error) {
       console.error('Verification error:', error);
@@ -499,7 +456,7 @@ const AuthPage = () => {
                         setSignUpStep(1);
                         setRegistrationComplete(false);
                         setSelectedDegree('');
-                        setActivationDeadline(null);
+                        setAccountExists(false);
                         localStorage.removeItem('pendingActivation');
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                       }}
@@ -516,7 +473,7 @@ const AuthPage = () => {
                         setSignUpStep(1);
                         setRegistrationComplete(false);
                         setSelectedDegree('');
-                        setActivationDeadline(null);
+                        setAccountExists(false);
                         localStorage.removeItem('pendingActivation');
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                       }}
@@ -724,6 +681,26 @@ const AuthPage = () => {
                           <p className="text-sm text-gray-600 mb-6">
                             Applying for: <span className="font-semibold text-[#024890]">{selectedDegree}'s Degree</span>
                           </p>
+
+                          {accountExists && (
+                            <div role="alert" className="mb-6 p-4 rounded-xl border border-blue-200 bg-blue-50 flex flex-col sm:flex-row sm:items-center gap-3">
+                              <div className="flex items-start gap-3 flex-1">
+                                <svg className="w-5 h-5 text-[#024890] mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                                </svg>
+                                <p className="text-sm text-gray-800">
+                                  <span className="font-semibold">This account already exists.</span> Please log in to continue.
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={openSignInWithEmail}
+                                className="px-5 py-2.5 bg-[#024890] hover:bg-[#023e7d] text-white rounded-lg font-semibold text-sm transition-colors whitespace-nowrap"
+                              >
+                                Log In
+                              </button>
+                            </div>
+                          )}
 
                           <form onSubmit={handleSignUp} className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
@@ -1002,23 +979,6 @@ const AuthPage = () => {
                               <p className="text-xs text-gray-600 mt-3">
                                 Check your email inbox for the 6-digit verification code
                               </p>
-
-                              {activationDeadline && (
-                                <div className="mt-4 flex items-center justify-center gap-2 text-sm">
-                                  <svg
-                                    className={`w-4 h-4 ${secondsLeft <= 60 ? 'text-red-600' : 'text-[#024890]'}`}
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    stroke="currentColor"
-                                  >
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                  </svg>
-                                  <span className={`font-semibold tabular-nums ${secondsLeft <= 60 ? 'text-red-600' : 'text-[#024890]'}`}>
-                                    {formatCountdown(secondsLeft)}
-                                  </span>
-                                  <span className="text-gray-600">left to confirm</span>
-                                </div>
-                              )}
                             </div>
 
                             <button

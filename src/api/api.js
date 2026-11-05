@@ -366,8 +366,12 @@ axiosInstance.interceptors.response.use(
     }
 
     // Ba'zi so'rovlar (masalan proctoring — backend ixtiyoriy) xatoni jimgina
-    // o'tkazadi: toast ham, Telegram ham yo'q.
-    const silent = error.config?.skipErrorToast;
+    // o'tkazadi: toast ham, Telegram ham yo'q. Funksiya bo'lsa — faqat u true
+    // qaytargan javoblar jim o'tadi (qolgan xatolar odatdagidek ko'rsatiladi).
+    const skipErrorToast = error.config?.skipErrorToast;
+    const silent = typeof skipErrorToast === 'function'
+      ? skipErrorToast(error.response)
+      : skipErrorToast;
 
     // 🔹 Show toast directly from API layer
     if (!silent) showApiError(errorMessage);
@@ -418,7 +422,7 @@ class ApiService {
   }
 
   async verifyActivationCode(email, activateCode) {
-    return axiosInstance.post(
+    const data = await axiosInstance.post(
       '/users/register-activate-code',
       {
         email,
@@ -427,6 +431,9 @@ class ApiService {
       // AuthPage o'zi xatoni ko'rsatadi — global toast ikki marta bo'lmasin.
       { skipAuth: true, skipErrorToast: true }
     );
+    // Javobda token kelsa, login'dagidek proctor so'rovlari uchun saqlaymiz.
+    storeProctorAccessToken(data);
+    return data;
   }
 
   async login(email, password) {
@@ -537,7 +544,10 @@ class ApiService {
     if (promocode && promocode.trim()) {
       payload.promocode = promocode.trim();
     }
-    return axiosInstance.post('/orders/create/', payload);
+    return axiosInstance.post('/orders/create/', payload, {
+      // 403 + eligible_on — 3 oylik cheklov; PaymentModal o'zi ko'rsatadi.
+      skipErrorToast: (response) => response?.status === 403 && Boolean(response.data?.eligible_on),
+    });
   }
 
   // ── Writing exam ────────────────────────────────────────

@@ -7,11 +7,22 @@ import clicklogo from '../../clicklogo.png';
 import paymelogo from '../../payme.svg';
 import { EXAM_FEE_UZS, EXAM_FEE_LABEL } from '../config/site';
 
+// "2027-02-03" → "February 3, 2027". Sanani lokal sana sifatida o'qiymiz —
+// new Date('YYYY-MM-DD') uni UTC deb oladi va ba'zi zonalarda bir kun siljiydi.
+const formatEligibleDate = (value) => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value));
+  if (!match) return String(value);
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+};
+
 const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
   const navigate = useNavigate();
   const [paymentMethod, setPaymentMethod] = useState('Payme');
   const [promocode, setPromocode] = useState('');
   const [confirmedMessage, setConfirmedMessage] = useState('');
+  // Dismissed/Disqualified qaroridan keyingi 3 oylik cheklov tugaydigan sana (eligible_on).
+  const [eligibleOn, setEligibleOn] = useState(null);
   const [isClosing, setIsClosing] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [tooltipFor, setTooltipFor] = useState('');
@@ -72,6 +83,15 @@ const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
       console.error('Payment error:', error);
       // Promocode xatolari (Invalid promocode va h.k.) interceptor orqali toast'da ko'rsatiladi
 
+      // 403 + eligible_on — arizachi hali qayta yozila olmaydi. Buyurtma yaratilmadi,
+      // to'lovga o'tkazmaymiz; modal ichida qachondan mumkinligini ko'rsatamiz.
+      const restrictedUntil = error?.response?.status === 403 ? error.response.data?.eligible_on : null;
+      if (restrictedUntil) {
+        setEligibleOn(restrictedUntil);
+        setIsProcessing(false);
+        return;
+      }
+
       // Check for various forms of auth error
       const isAuthError =
         error?.message?.toLowerCase().includes('authentication credentials') ||
@@ -80,16 +100,20 @@ const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
         error?.message?.toLowerCase().includes('401');
 
       if (isAuthError) {
-        // Auth'dan keyin booking'ni davom ettirish uchun tanlangan sanani saqlaymiz
+        // Auth'dan keyin booking'ni davom ettirish uchun tanlangan sanani saqlaymiz.
+        // userEmail logout'da o'chmaydi — bor bo'lsa, bu qurilmada akkaunt bor va
+        // faqat sessiya tugagan: Sign Up emas, Sign In ochamiz.
+        let hasAccount = false;
         try {
           localStorage.setItem('pendingBooking', JSON.stringify(selectedDate));
+          hasAccount = Boolean(localStorage.getItem('userEmail'));
         } catch {
           // localStorage ishlamasa ham oqimni buzmaymiz
         }
         // Close modal without delay to prevent state updates on unmount
         setIsClosing(true);
         onClose();
-        navigate('/auth?tab=signup&redirect=/test-dates');
+        navigate(`/auth?tab=${hasAccount ? 'signin' : 'signup'}&redirect=/test-dates`);
         return;
       }
       setIsProcessing(false); // Only stop processing if not redirecting
@@ -102,6 +126,7 @@ const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
       setPaymentMethod('Payme');
       setPromocode('');
       setConfirmedMessage('');
+      setEligibleOn(null);
       onClose();
       setIsClosing(false);
     }, 300);
@@ -183,6 +208,26 @@ const PaymentModal = ({ isOpen, selectedDate, onClose }) => {
               <button
                 onClick={handleModalClose}
                 className="mt-3 text-sm text-gray-400 hover:text-gray-200 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          ) : eligibleOn ? (
+            /* ── 3 oylik cheklov (Dismissed/Disqualified) — to'lovga o'tkazilmaydi ── */
+            <div className="flex flex-col items-center text-center py-6">
+              <div className="w-20 h-20 bg-amber-500/20 rounded-full flex items-center justify-center mb-6 border border-amber-500/30">
+                <svg className="w-10 h-10 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <h2 className="text-2xl font-bold text-white mb-3">Registration Not Available Yet</h2>
+              <p className="text-gray-300 text-sm sm:text-base mb-6 max-w-sm">
+                You can register for the test again from{' '}
+                <span className="font-semibold text-white">{formatEligibleDate(eligibleOn)}</span>.
+              </p>
+              <button
+                onClick={handleModalClose}
+                className="w-full py-4 rounded-xl font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/30 transition-all"
               >
                 Close
               </button>
