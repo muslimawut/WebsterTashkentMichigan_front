@@ -392,14 +392,18 @@ const AuthPage = () => {
         {/* Main Content - Force Center */}
         <div className="flex-grow flex flex-col justify-center items-center w-full pb-8">
           <div className="w-full max-w-5xl">
-            <div className="bg-white rounded-2xl sm:rounded-3xl shadow-xl sm:shadow-2xl overflow-hidden">
+            {/* overflow-clip (hidden emas): hidden scroll-container yaratib, chap tomondagi sticky'ni buzadi */}
+            <div className="bg-white rounded-2xl sm:rounded-3xl shadow-xl sm:shadow-2xl overflow-clip">
               <div className="grid md:grid-cols-2">
                 {/* Left Side - Image/Info (Hidden on Mobile) */}
-                <div className="hidden md:flex bg-gradient-to-br from-[#024890] to-[#023a70] p-8 lg:p-12 text-white flex-col justify-center relative overflow-hidden">
+                <div className="hidden md:flex bg-gradient-to-br from-[#024890] to-[#023a70] p-8 lg:p-12 text-white flex-col relative overflow-clip">
                   {/* Decorative circles */}
                   <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 rounded-full bg-white/5 blur-3xl"></div>
                   <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-60 h-60 rounded-full bg-white/10 blur-2xl"></div>
 
+                  {/* Forma uzun bo'lsa matn ekranning ko'rinib turgan qismi o'rtasida qoladi (sticky);
+                      qisqa bo'lsa — ustunning o'zi o'rtasida. */}
+                  <div className="sticky top-32 z-10 flex flex-col justify-center min-h-[min(calc(100vh-16rem),100%)]">
                   <div className="relative z-10 mb-8">
                     <h1 className="text-3xl lg:text-4xl font-bold mb-4">Welcome to Webster University Tashkent</h1>
                     <p className="text-blue-100 text-base lg:text-lg opacity-90">
@@ -443,6 +447,7 @@ const AuthPage = () => {
                         <p className="text-blue-100 text-sm opacity-80">Receive your test results quickly and securely</p>
                       </div>
                     </div>
+                  </div>
                   </div>
                 </div>
 
