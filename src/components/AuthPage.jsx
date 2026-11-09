@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import logo from '../../logobluewebster.png';
 import ApiService from '../api/api';
 import ForgotPasswordModal from './ForgotPasswordModal';
-import { toast, ToastContainer } from 'react-toastify';
+import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -95,14 +95,19 @@ const AuthPage = () => {
 
 
   const showNotification = (message, type = 'success', extraOptions = {}) => {
-    // Agar xabar string bo‘lsa — \n ni <br/>ga aylantiramiz
+    // Agar xabar string bo‘lsa — \n ni <br/>ga aylantiramiz.
+    // Bitta Fragment'ga o'raymiz: react-toastify v11 massivni qabul qilmaydi va toastni jimgina tashlab yuboradi.
     const formattedMessage = typeof message === 'string'
-      ? message.split('\n').map((line, index) => (
-        <React.Fragment key={index}>
-          {line}
-          {index < message.split('\n').length - 1 && <br />}
-        </React.Fragment>
-      ))
+      ? (
+        <>
+          {message.split('\n').map((line, index, lines) => (
+            <React.Fragment key={index}>
+              {line}
+              {index < lines.length - 1 && <br />}
+            </React.Fragment>
+          ))}
+        </>
+      )
       : message; // agar JSX bo‘lsa, to‘g‘ridan-to‘g‘ri chiqadi
 
     const options = {
@@ -1012,19 +1017,6 @@ const AuthPage = () => {
           onClose={() => setShowForgotPassword(false)}
         />
 
-        {/* Toast Container */}
-        <ToastContainer
-          position="top-right"
-          autoClose={5000}
-          hideProgressBar={false}
-          newestOnTop={false}
-          closeOnClick
-          rtl={false}
-          pauseOnFocusLoss
-          draggable
-          pauseOnHover
-          theme="light"
-        />
       </div>
     </div>
   );

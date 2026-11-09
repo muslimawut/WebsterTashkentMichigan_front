@@ -23,7 +23,7 @@ import {
   RotateCcw
 } from 'lucide-react';
 import ApiService from '../api/api';
-import { toast, ToastContainer } from 'react-toastify';
+import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import ChangePasswordModal from './ChangePasswordModal';
 import { clearAuthSession } from '../utils/authSession';
@@ -712,19 +712,6 @@ const ProfilePage = () => {
         )}
       </div>
 
-      {/* Toast Container */}
-      <ToastContainer
-        position="top-right"
-        autoClose={5000}
-        hideProgressBar={false}
-        newestOnTop={false}
-        closeOnClick
-        rtl={false}
-        pauseOnFocusLoss
-        draggable
-        pauseOnHover
-        theme="light"
-      />
 
       {/* Change Password Modal */}
       <ChangePasswordModal
